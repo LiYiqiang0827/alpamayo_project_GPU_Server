@@ -1,0 +1,50 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Alpamayo 1.5 - Standard Inference",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/run_inference_1_5.py",
+            "args": [
+                "--clip",
+                "01d3588e-bca7-4a18-8e74-c6cfe9e996db",
+                "--num_frames",
+                "10",
+                "--gpu",
+                "0",
+                "--traj",
+                "1"
+            ],
+            "console": "integratedTerminal",
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "0",
+                "TRANSFORMERS_OFFLINE": "1"
+            },
+            "python": "/home/user/miniconda3/envs/alpamayo_env/bin/python"
+        },
+        {
+            "name": "Alpamayo 1.5 - CFG Inference",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/run_inference_1_5.py",
+            "args": [
+                "--clip",
+                "01d3588e-bca7-4a18-8e74-c6cfe9e996db",
+                "--num_frames",
+                "10",
+                "--gpu",
+                "0",
+                "--traj",
+                "1",
+                "--use_cfg"
+            ],
+            "console": "integratedTerminal",
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "0",
+                "TRANSFORMERS_OFFLINE": "1"
+            },
+            "python": "/home/user/miniconda3/envs/alpamayo_env/bin/python"
+        }
+    ]
+}
