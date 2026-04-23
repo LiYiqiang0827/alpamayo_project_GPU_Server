@@ -11,8 +11,21 @@
     --step     帧采样步长,必须>=1,默认 1
     --traj     轨迹数量,默认 1
 
-用法:
-    python3 run_inference_mulGPU_1_5.py --chunk 3,4,5 --clip all --step 1
+环境要求:
+    必须使用 conda 环境 alpamayo_env:
+        conda activate alpamayo_env
+        python3 run_inference_mulGPU_1_5.py ...
+
+    或使用 conda run 启动:
+        conda run -n alpamayo_env python3 run_inference_mulGPU_1_5.py ...
+
+用法示例:
+    # 激活环境后运行
+    conda activate alpamayo_env
+    python3 run_inference_mulGPU_1_5.py --chunk 3,4,5 --clip all --step 1 --gpu 1,2,3
+
+    # 单次运行用 conda run
+    conda run -n alpamayo_env python3 run_inference_mulGPU_1_5.py --chunk 0 --clip all --gpu 1
 """
 import os
 import sys
