@@ -71,6 +71,7 @@ def parse_and_validate_args() -> dict:
               示例: --chunk 0 或 --chunk 3,4,5
   --clip      clip ID,逗号分隔或 "all"(默认 all)
               示例: --clip 01d3588e... 或 --clip 01d3588e...,038678de...
+              注意: clip可以在不同chunk中,脚本会自动查找
   --num_frames 帧采样比例 0.0~1.0,0表示全部帧(100%%)
               示例: 0.5 表示前50%%帧, 0.1 表示前10%%帧
   --step     帧采样步长,必须>=1,默认 1
@@ -204,87 +205,101 @@ def build_task_dataframe(params: dict) -> pd.DataFrame:
 
     all_tasks = []
 
+    # ---------- 建立 clip_id -> chunk_id 的映射 ----------
+    clip_to_chunk = {}
     for chunk in params["chunks"]:
         base_dir = f"{BASE_DATA_DIR}{chunk}/infer"
+        if not os.path.exists(base_dir):
+            print(f"  警告: chunk {chunk} 目录不存在: {base_dir}")
+            continue
+        for d in os.listdir(base_dir):
+            clip_path = os.path.join(base_dir, d)
+            if os.path.isdir(clip_path):
+                clip_to_chunk[d] = chunk
 
-        # ---------- 第一步:确定 clip 列表 ----------
-        if params["use_all_clips"]:
-            clip_dirs = sorted([
-                d for d in os.listdir(base_dir)
-                if os.path.isdir(os.path.join(base_dir, d))
-            ])
-            print(f"  chunk {chunk}: 找到 {len(clip_dirs)} 个 clips")
-        else:
-            clip_dirs = params["clip_list"]
-            missing = []
-            for clip_id in clip_dirs:
-                clip_path = os.path.join(base_dir, clip_id)
-                if not os.path.isdir(clip_path):
-                    missing.append(clip_id)
-            if missing:
-                raise FileNotFoundError(f"Clip 不存在: {missing}")
-            print(f"  chunk {chunk}: 指定了 {len(clip_dirs)} 个 clips")
+    print(f"  扫描到 {len(clip_to_chunk)} 个 clips")
 
-        # ---------- 第二步:收集每个 clip 的帧 ----------
-        for clip_id in clip_dirs:
-            clip_data_dir = os.path.join(base_dir, clip_id, "data")
-            index_file = os.path.join(clip_data_dir, "inference_index_strict.csv")
+    # ---------- 确定要处理的 clip 列表 ----------
+    if params["use_all_clips"]:
+        # 处理所有 clips
+        selected_clips = [(clip_id, chunk) for clip_id, chunk in clip_to_chunk.items()]
+        print(f"  模式: all, 共 {len(selected_clips)} 个 clips")
+    else:
+        # 处理指定的 clips
+        selected_clips = []
+        missing = []
+        for clip_id in params["clip_list"]:
+            if clip_id in clip_to_chunk:
+                selected_clips.append((clip_id, clip_to_chunk[clip_id]))
+            else:
+                missing.append(clip_id)
+        
+        if missing:
+            raise FileNotFoundError(f"Clip 不存在: {missing}")
+        
+        print(f"  模式: 指定 clips, 共 {len(selected_clips)} 个 clips")
 
-            if not os.path.exists(index_file):
-                print(f"  警告: {clip_id} 没有 inference_index_strict.csv,跳过")
-                continue
+    # ---------- 收集每个 clip 的帧 ----------
+    for clip_id, chunk in selected_clips:
+        base_dir = f"{BASE_DATA_DIR}{chunk}/infer"
+        clip_data_dir = os.path.join(base_dir, clip_id, "data")
+        index_file = os.path.join(clip_data_dir, "inference_index_strict.csv")
 
-            index_df = pd.read_csv(index_file)
-            total_frames = len(index_df)
+        if not os.path.exists(index_file):
+            print(f"  警告: {clip_id} 没有 inference_index_strict.csv,跳过")
+            continue
 
-            # ---------- 确定要处理的帧 ----------
-            sampled_indices = list(range(0, total_frames, params["step"]))
+        index_df = pd.read_csv(index_file)
+        total_frames = len(index_df)
 
-            if params["num_frames_ratio"] > 0:
-                max_indices = max(1, int(total_frames * params["num_frames_ratio"]))
-                max_indices = ((max_indices + params["step"] - 1) // params["step"]) * params["step"]
-                sampled_indices = sampled_indices[:max_indices]
+        # ---------- 确定要处理的帧 ----------
+        sampled_indices = list(range(0, total_frames, params["step"]))
 
-            print(f"    {clip_id}: 总帧数={total_frames}, 采样后={len(sampled_indices)} (step={params['step']}, ratio={params['num_frames_ratio']})")
+        if params["num_frames_ratio"] > 0:
+            max_indices = max(1, int(total_frames * params["num_frames_ratio"]))
+            max_indices = ((max_indices + params["step"] - 1) // params["step"]) * params["step"]
+            sampled_indices = sampled_indices[:max_indices]
 
-            # ---------- 为每个采样帧构建记录 ----------
-            for idx in sampled_indices:
-                row = index_df.iloc[idx]
-                frame_id = int(row["frame_id"])
+        print(f"    chunk{chunk:04d}/{clip_id}: 总帧数={total_frames}, 采样后={len(sampled_indices)} (step={params['step']}, ratio={params['num_frames_ratio']})")
 
-                image_paths = {}
-                for cam in CAMERA_ORDER:
-                    for t in range(NUM_FRAMES_PER_CAMERA):
-                        col_idx = f"{cam}_f{t}_idx"
-                        frame_idx = int(row[col_idx])
-                        img_path = os.path.join(
-                            clip_data_dir,
-                            "camera_images",
-                            cam,
-                            f"{frame_idx:06d}.jpg"
-                        )
-                        image_paths[(cam, t)] = img_path
+        # ---------- 为每个采样帧构建记录 ----------
+        for idx in sampled_indices:
+            row = index_df.iloc[idx]
+            frame_id = int(row["frame_id"])
 
-                history_path = os.path.join(
-                    clip_data_dir,
-                    "egomotion",
-                    f"frame_{frame_id:06d}_history.npy"
-                )
-                future_path = os.path.join(
-                    clip_data_dir,
-                    "egomotion",
-                    f"frame_{frame_id:06d}_future_gt.npy"
-                )
+            image_paths = {}
+            for cam in CAMERA_ORDER:
+                for t in range(NUM_FRAMES_PER_CAMERA):
+                    col_idx = f"{cam}_f{t}_idx"
+                    frame_idx = int(row[col_idx])
+                    img_path = os.path.join(
+                        clip_data_dir,
+                        "camera_images",
+                        cam,
+                        f"{frame_idx:06d}.jpg"
+                    )
+                    image_paths[(cam, t)] = img_path
 
-                all_tasks.append({
-                    "chunk_id": chunk,
-                    "clip_id": clip_id,
-                    "frame_idx": idx,
-                    "frame_id": frame_id,
-                    "image_paths": image_paths,
-                    "history_path": history_path,
-                    "future_path": future_path,
-                })
+            history_path = os.path.join(
+                clip_data_dir,
+                "egomotion",
+                f"frame_{frame_id:06d}_history.npy"
+            )
+            future_path = os.path.join(
+                clip_data_dir,
+                "egomotion",
+                f"frame_{frame_id:06d}_future_gt.npy"
+            )
+
+            all_tasks.append({
+                "chunk_id": chunk,
+                "clip_id": clip_id,
+                "frame_idx": idx,
+                "frame_id": frame_id,
+                "image_paths": image_paths,
+                "history_path": history_path,
+                "future_path": future_path,
+            })
 
     # ---------- 构造成 DataFrame ----------
     if not all_tasks:
