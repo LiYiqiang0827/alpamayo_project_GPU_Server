@@ -221,8 +221,8 @@ Examples:
     
     parser.add_argument(
         "--base-dir", "-d",
-        default="/data01/mikelee/data",
-        help="Base directory for downloads (default: /data01/mikelee/data)"
+        default="/gpfs-data/mikelee/data",
+        help="Base directory for downloads (default: /gpfs-data/mikelee/data)"
     )
     
     parser.add_argument(
