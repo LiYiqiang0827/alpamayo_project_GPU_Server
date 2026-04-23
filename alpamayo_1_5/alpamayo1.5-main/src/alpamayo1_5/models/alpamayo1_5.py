@@ -420,9 +420,13 @@ class Alpamayo1_5(ReasoningVLA):
             # Stack: (total_batch, num_steps+1, 64, 2)
             all_steps_xyz = torch.stack(all_trajectories, dim=1)
             # Reshape to (B, num_traj_samples, num_steps+1, 64, 2)
-            all_steps_xyz = einops.rearrange(
-                all_steps_xyz, "(b ns) ts 64 xy -> b ns ts 64 xy", ns=num_traj_samples
-            )
+            if num_traj_samples == 1:
+                # Special case: einops does not support length-1 anonymous axes
+                all_steps_xyz = all_steps_xyz.view(B, num_traj_samples, all_steps_xyz.shape[1], 64, 2)
+            else:
+                all_steps_xyz = einops.rearrange(
+                    all_steps_xyz, "(b ns) ts 64 xy -> b ns ts 64 xy", ns=num_traj_samples
+                )
             # Final prediction uses the last step
             final_action = all_actions[:, -1]  # (total_batch, 64, 2)
             pred_xyz, pred_rot = self.action_space.action_to_traj(
