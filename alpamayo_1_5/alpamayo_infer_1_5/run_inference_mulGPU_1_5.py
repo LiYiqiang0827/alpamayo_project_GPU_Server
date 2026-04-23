@@ -666,7 +666,7 @@ def launch_inference_workers(tasks: List[Dict], output_root: str, params: dict, 
     for task in tasks:
         worker_id = task["worker_id"]
         result_csv = os.path.join(output_root, f"infer_results_worker{worker_id:02d}.csv")
-        if os.path.exists(result_csv):
+        if os.path.exists(result_csv) and os.path.getsize(result_csv) > 0:
             df = pd.read_csv(result_csv)
             all_results.append(df)
 
