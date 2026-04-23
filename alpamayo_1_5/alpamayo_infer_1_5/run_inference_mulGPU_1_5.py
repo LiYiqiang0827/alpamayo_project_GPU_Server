@@ -121,6 +121,11 @@ def parse_and_validate_args() -> dict:
         action="store_true",
         help="保存 Flow Matching 每一步的中间结果 (action 和 trajectory)"
     )
+    parser.add_argument(
+        "--pre_resized",
+        action="store_true",
+        help="使用预缩放图片 (_small.npy),跳过processor的resize步骤"
+    )
 
     args = parser.parse_args()
 
@@ -198,6 +203,7 @@ def parse_and_validate_args() -> dict:
         "step": step,
         "traj": traj,
         "save_diffusion_steps": args.save_diffusion_steps,
+        "pre_resized": args.pre_resized,
     }
 
     return params
@@ -284,6 +290,9 @@ def build_task_dataframe(params: dict) -> pd.DataFrame:
                         cam,
                         f"{frame_idx:06d}.jpg"
                     )
+                    if params.get("pre_resized"):
+                        # 预缩放模式：使用 _small.npy 文件，跳过 resize
+                        img_path = img_path.replace(".jpg", "_small.npy")
                     image_paths[(cam, t)] = img_path
 
             history_path = os.path.join(
@@ -440,6 +449,7 @@ def run_worker_inference(task: Dict[str, Any], output_root: str, params: dict):
     frame_df = task["frame_df"]
     traj = params["traj"]
     save_diffusion_steps = params.get("save_diffusion_steps", False)
+    pre_resized = params.get("pre_resized", False)
     
     os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
     os.environ["TRANSFORMERS_OFFLINE"] = "1"
@@ -494,8 +504,21 @@ def run_worker_inference(task: Dict[str, Any], output_root: str, params: dict):
             for cam in CAMERA_ORDER:
                 for t in range(NUM_FRAMES_PER_CAMERA):
                     img_path = image_paths[(cam, t)]
-                    img = Image.open(img_path).convert('RGB')
-                    images.append(np.array(img))
+                    if params.get("pre_resized"):
+                        # 预缩放模式：优先加载 _small.npy（跳过resize）
+                        # 如果不存在则fallback到原始jpg（仅用于测试）
+                        if os.path.exists(img_path):
+                            img_np = np.load(img_path).astype(np.uint8)
+                        else:
+                            # Fallback: 从jpg加载（resize仍然由processor执行）
+                            orig_jpg = img_path.replace('_small.npy', '.jpg')
+                            img = Image.open(orig_jpg).convert('RGB')
+                            img_np = np.array(img)
+                            print(f"  [WARN] {frame_id}: _small.npy 不存在,fallback到原始jpg")
+                    else:
+                        img = Image.open(img_path).convert('RGB')
+                        img_np = np.array(img)
+                    images.append(img_np)
 
             images = np.stack(images, axis=0)
             images = rearrange(images, '(c t) h w ch -> c t ch h w', c=4, t=4)
