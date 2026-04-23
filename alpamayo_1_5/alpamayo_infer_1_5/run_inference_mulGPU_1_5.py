@@ -116,6 +116,11 @@ def parse_and_validate_args() -> dict:
         default=1,
         help="轨迹数量 (默认: 1)"
     )
+    parser.add_argument(
+        "--save_diffusion_steps",
+        action="store_true",
+        help="保存 Flow Matching 每一步的中间结果 (action 和 trajectory)"
+    )
 
     args = parser.parse_args()
 
@@ -192,6 +197,7 @@ def parse_and_validate_args() -> dict:
         "num_frames_ratio": num_frames,
         "step": step,
         "traj": traj,
+        "save_diffusion_steps": args.save_diffusion_steps,
     }
 
     return params
@@ -433,6 +439,7 @@ def run_worker_inference(task: Dict[str, Any], output_root: str, params: dict):
     gpu_id = task["gpu_id"]
     frame_df = task["frame_df"]
     traj = params["traj"]
+    save_diffusion_steps = params.get("save_diffusion_steps", False)
     
     os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
     os.environ["TRANSFORMERS_OFFLINE"] = "1"
@@ -537,6 +544,7 @@ def run_worker_inference(task: Dict[str, Any], output_root: str, params: dict):
                     num_traj_samples=traj,
                     max_generation_length=256,
                     return_extra=True,
+                    return_diffusion_steps=save_diffusion_steps,
                 )
 
             pred_xyz_np = pred_xyz.cpu().numpy()[0, 0, 0, :, :2]
@@ -565,6 +573,28 @@ def run_worker_inference(task: Dict[str, Any], output_root: str, params: dict):
             cot_path = os.path.join(cot_dir, f"chunk{chunk_id:04d}_{clip_id}_{frame_id:06d}_cot.txt")
             with open(cot_path, 'w') as f:
                 f.write(cot_text)
+
+            # Save diffusion steps if requested
+            if save_diffusion_steps and extra is not None:
+                diff_steps_xyz = extra.get("diffusion_steps_xyz")
+                diff_steps_action = extra.get("diffusion_steps_action")
+                diff_steps_time = extra.get("diffusion_steps_time")
+                
+                if diff_steps_xyz is not None:
+                    diff_steps_dir = os.path.join(output_root, "diffusion_steps")
+                    os.makedirs(diff_steps_dir, exist_ok=True)
+                    
+                    # Save as npz format
+                    diff_steps_path = os.path.join(
+                        diff_steps_dir, 
+                        f"chunk{chunk_id:04d}_{clip_id}_{frame_id:06d}_diffusion_steps.npz"
+                    )
+                    np.savez(
+                        diff_steps_path,
+                        xyz=diff_steps_xyz[0, 0],  # (num_steps+1, 64, 2)
+                        action=diff_steps_action[0, 0],  # (num_steps+1, 64, 2)
+                        time=diff_steps_time,  # (num_steps+1,)
+                    )
 
             all_cot_results.append({
                 'chunk_id': chunk_id,
