@@ -525,7 +525,7 @@ def run_worker_inference(task: Dict[str, Any], output_root: str, params: dict):
                 )
 
             pred_xyz_np = pred_xyz.cpu().numpy()[0, 0, 0, :, :2]
-            pred_path = os.path.join(pred_traj_dir, f"{clip_id}_{frame_id:06d}_predtraj.npy")
+            pred_path = os.path.join(pred_traj_dir, f"chunk{chunk_id}_{clip_id}_{frame_id:06d}_predtraj.npy")
             np.save(pred_path, pred_xyz_np)
 
             coc_texts = extra.get("cot", [[[]]])
@@ -547,7 +547,7 @@ def run_worker_inference(task: Dict[str, Any], output_root: str, params: dict):
                     return result
                 cot_text = " ".join(flatten(coc_texts))
 
-            cot_path = os.path.join(cot_dir, f"{clip_id}_{frame_id:06d}_cot.txt")
+            cot_path = os.path.join(cot_dir, f"chunk{chunk_id}_{clip_id}_{frame_id:06d}_cot.txt")
             with open(cot_path, 'w') as f:
                 f.write(cot_text)
 
