@@ -8,17 +8,23 @@ Preprocess clips with strict timestamp alignment (no interpolation version)
   python infer_data_gen.py --chunks 1,2 --clips all --parallel 4
   python infer_data_gen.py --chunks 1 --clips uuid1,uuid2 --parallel 4
   python infer_data_gen.py --chunks 1 --clips uuid1 --parallel 1
+
+新增功能:
+  --pre_resize  解码后自动 resize 成 576x320 并保存为 _small.jpg (默认开启)
+  --save_numpy  调试用：额外保存解码后的原始 numpy 数据 (默认关闭)
+  --source_dir   源数据根目录 (默认 /gpfs-data/mikelee/data)
+  --output_dir   输出根目录 (默认 /data01/mikelee/data)
 """
 
 import os
 import sys
 import json
 import argparse
+import math
 import numpy as np
 import pandas as pd
 from pathlib import Path
-from concurrent.futures import ProcessPoolExecutor, as_completed
-from itertools import product
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 
 # Configuration
 HISTORY_STEPS = 16  # 1.6 seconds at 10Hz
@@ -33,6 +39,35 @@ CAMERAS = [
 IMG_TIME_OFFSETS_MS = [300, 200, 100, 0]  # f0, f1, f2, f3
 MAX_IMAGE_DIFF_MS = 33  # Maximum allowed time difference for images
 MAX_EGO_DIFF_MS = 30  # Maximum allowed time difference for egomotion validation
+
+# Resize configuration (与 infer_resize_image.py 保持一致)
+MIN_PIXELS = 163840
+MAX_PIXELS = 196608
+PATCH_SIZE = 16
+MERGE_SIZE = 2
+FACTOR = PATCH_SIZE * MERGE_SIZE  # 32
+JPG_QUALITY_RESIZE = 95  # pre_resize 输出的 JPEG 质量
+
+
+def smart_resize(height, width, factor=FACTOR,
+                  min_pixels=MIN_PIXELS, max_pixels=MAX_PIXELS):
+    """复现 Qwen2VLImageProcessor 的 smart_resize 算法"""
+    if max(height, width) / min(height, width) > 200:
+        raise ValueError(f"Aspect ratio too extreme")
+
+    h_bar = round(height / factor) * factor
+    w_bar = round(width / factor) * factor
+
+    if h_bar * w_bar > max_pixels:
+        beta = math.sqrt((height * width) / max_pixels)
+        h_bar = max(factor, math.floor(height / beta / factor) * factor)
+        w_bar = max(factor, math.floor(width / beta / factor) * factor)
+    elif h_bar * w_bar < min_pixels:
+        beta = math.sqrt(min_pixels / (height * width))
+        h_bar = math.ceil(height * beta / factor) * factor
+        w_bar = math.ceil(width * beta / factor) * factor
+
+    return h_bar, w_bar
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -51,14 +86,10 @@ def get_all_clips_in_chunk(data_root):
     return sorted(clips)
 
 
-def build_clip_frame(chunks_str, clips_str, base_dir):
+def build_clip_frame(chunks_str, clips_str, source_dir):
     """
     根据 chunks 和 clips 构建 clip_frame DataFrame。
-
-    Returns:
-        DataFrame with columns: chunk_id (int), clip_id (str)
     """
-    # ── 解析 chunks ──
     chunk_ids = []
     for part in chunks_str.split(","):
         part = part.strip()
@@ -67,12 +98,11 @@ def build_clip_frame(chunks_str, clips_str, base_dir):
         chunk_ids.append(int(part))
     chunk_ids = sorted(set(chunk_ids))
 
-    # ── 解析 clips ──
     clips_str = clips_str.strip()
     clip_frames = []
 
     for chunk_id in chunk_ids:
-        data_root = f"{base_dir}/data_sample_chunk{chunk_id}"
+        data_root = f"{source_dir}/data_sample_chunk{chunk_id}"
 
         if clips_str.lower() == "all":
             clips_in_chunk = get_all_clips_in_chunk(data_root)
@@ -102,13 +132,14 @@ def build_clip_frame(chunks_str, clips_str, base_dir):
 # Core preprocessing (per-clip)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def preprocess_clip_strict(chunk_id, clip_id, data_root, output_root, force=False):
+def preprocess_clip_strict(chunk_id, clip_id, source_dir, output_dir,
+                           pre_resize=True, save_numpy=False, jpg_quality=95, force=False):
     """
     Preprocess a single clip with strict timestamp alignment.
     Returns: (chunk_id, clip_id, status, message)
     """
-    data_path = Path(data_root)
-    output_path = Path(output_root) / clip_id
+    data_path = Path(source_dir) / f"data_sample_chunk{chunk_id}"
+    output_path = Path(output_dir) / f"data_sample_chunk{chunk_id}" / "infer" / clip_id
 
     # Check if already processed
     if (output_path / "data" / "inference_index_strict.csv").exists():
@@ -285,34 +316,52 @@ def preprocess_clip_strict(chunk_id, clip_id, data_root, output_root, force=Fals
     # Decode camera videos
     import av
     from PIL import Image
-    from concurrent.futures import ThreadPoolExecutor
 
-    JPG_QUALITY = 95
-
-    def decode_video_gpu(cam_name):
+    def decode_video_with_resize(cam_name):
         try:
-            video_path = f"{data_root}/camera/{cam_name}/{clip_id}.{cam_name}.mp4"
+            video_path = f"{data_path}/camera/{cam_name}/{clip_id}.{cam_name}.mp4"
             cam_img_dir = f"{output_path}/data/camera_images/{cam_name}"
             os.makedirs(cam_img_dir, exist_ok=True)
+
             container = av.open(video_path)
             stream = container.streams.video[0]
             try:
                 stream.codec_context.codec = av.Codec("h264_cuvid", "r")
             except Exception:
                 pass
+
             frame_count = 0
             for packet in container.demux(stream):
                 for frame in packet.decode():
                     img = Image.fromarray(frame.to_ndarray(format="rgb24"))
-                    img.save(f"{cam_img_dir}/{frame_count:06d}.jpg", "JPEG", quality=JPG_QUALITY)
+
+                    if save_numpy:
+                        # 保存解码后的原始 numpy (H, W, C) uint8
+                        npy_data = np.array(img, dtype=np.uint8)
+                        np.save(f"{cam_img_dir}/{frame_count:06d}.npy", npy_data)
+
+                    if pre_resize:
+                        # smart_resize
+                        orig_w, orig_h = img.size
+                        target_h, target_w = smart_resize(orig_h, orig_w)
+                        img_resized = img.resize((target_w, target_h), Image.BICUBIC)
+                        img_resized.save(
+                            f"{cam_img_dir}/{frame_count:06d}_small.jpg",
+                            "JPEG",
+                            quality=jpg_quality
+                        )
+                        img_resized.close()
+
+                    img.close()
                     frame_count += 1
+
             container.close()
             return cam_name, frame_count
         except Exception as e:
             return cam_name, 0
 
     with ThreadPoolExecutor(max_workers=4) as executor:
-        results = list(executor.map(decode_video_gpu, CAMERAS))
+        results = list(executor.map(decode_video_with_resize, CAMERAS))
 
     # Save metadata
     metadata = {
@@ -325,6 +374,9 @@ def preprocess_clip_strict(chunk_id, clip_id, data_root, output_root, force=Fals
         "max_image_diff_ms": MAX_IMAGE_DIFF_MS,
         "max_ego_diff_ms": MAX_EGO_DIFF_MS,
         "validation_method": "strict_no_interpolation",
+        "pre_resize": pre_resize,
+        "save_numpy": save_numpy,
+        "resize_jpeg_quality": jpg_quality if pre_resize else None,
         "camera_frames_decoded": dict(results),
         "filter_stats": {
             "total_checked": stats["total_checked"],
@@ -340,11 +392,12 @@ def preprocess_clip_strict(chunk_id, clip_id, data_root, output_root, force=Fals
 
 
 def process_one_clip(args):
-    """多进程 wrapper：接收 (chunk_id, clip_id, base_dir, force)"""
-    chunk_id, clip_id, base_dir, force = args
-    data_root = f"{base_dir}/data_sample_chunk{chunk_id}"
-    output_root = f"{base_dir}/data_sample_chunk{chunk_id}/infer"
-    return preprocess_clip_strict(chunk_id, clip_id, data_root, output_root, force=force)
+    """多进程 wrapper"""
+    chunk_id, clip_id, source_dir, output_dir, pre_resize, save_numpy, jpg_quality, force = args
+    return preprocess_clip_strict(
+        chunk_id, clip_id, source_dir, output_dir,
+        pre_resize=pre_resize, save_numpy=save_numpy, jpg_quality=jpg_quality, force=force
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -357,7 +410,7 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例:
-  # chunk1 的所有 clips，4进程并行
+  # chunk1 的所有 clips，4进程并行，预 resize 开启
   python infer_data_gen.py --chunks 1 --clips all --parallel 4
 
   # 多个 chunk 的所有 clips
@@ -374,6 +427,15 @@ def main():
 
   # 强制覆盖
   python infer_data_gen.py --chunks 1 --clips all --parallel 4 --force
+
+  # 关闭 pre_resize（输出原始分辨率 jpg）
+  python infer_data_gen.py --chunks 1 --clips all --parallel 4 --no-pre-resize
+
+  # 开启 save_numpy（调试用，保存原始解码 numpy）
+  python infer_data_gen.py --chunks 1 --clips all --parallel 4 --save-numpy
+
+  # 自定义 JPEG 质量
+  python infer_data_gen.py --chunks 1 --clips all --parallel 4 --jpg-quality 95
         """,
     )
     parser.add_argument(
@@ -389,16 +451,45 @@ def main():
         help="Clip ID(s)，支持: all（该chunk下全部）, 逗号分隔列表, 或单个clip ID",
     )
     parser.add_argument(
-        "--base-dir",
+        "--source-dir",
+        type=str,
+        default="/gpfs-data/mikelee/data",
+        help="源数据根目录 (default: /gpfs-data/mikelee/data)",
+    )
+    parser.add_argument(
+        "--output-dir",
         type=str,
         default="/data01/mikelee/data",
-        help="数据根目录 (default: /data01/mikelee/data)",
+        help="输出根目录 (default: /data01/mikelee/data)",
     )
     parser.add_argument(
         "--parallel",
         type=int,
         default=1,
         help="并行进程数（每个进程处理一个 clip）",
+    )
+    parser.add_argument(
+        "--pre-resize",
+        action="store_true",
+        default=True,
+        help="解码后 resize 成 576x320 并保存为 _small.jpg (默认开启)",
+    )
+    parser.add_argument(
+        "--no-pre-resize",
+        action="store_true",
+        help="关闭 pre_resize（输出原始分辨率 jpg）",
+    )
+    parser.add_argument(
+        "--save-numpy",
+        action="store_true",
+        default=False,
+        help="调试用：额外保存解码后的原始 numpy 数据 (默认关闭)",
+    )
+    parser.add_argument(
+        "--jpg-quality",
+        type=int,
+        default=95,
+        help="pre_resize 输出的 JPEG 质量 (默认: 95)",
     )
     parser.add_argument(
         "--skip-existing",
@@ -412,6 +503,9 @@ def main():
     )
     args = parser.parse_args()
 
+    # --no-pre-resize 覆盖 --pre-resize
+    pre_resize = not args.no_pre_resize
+
     if args.force and args.skip_existing:
         print("❌ --force 和 --skip-existing 不能同时使用！")
         sys.exit(1)
@@ -420,14 +514,14 @@ def main():
     print(f"\n{'=' * 60}")
     print(f"🎯 构建 clip_frame")
     print(f"{'=' * 60}")
-    clip_frame = build_clip_frame(args.chunks, args.clips, args.base_dir)
+    clip_frame = build_clip_frame(args.chunks, args.clips, args.source_dir)
     if clip_frame is None or len(clip_frame) == 0:
         sys.exit(1)
 
     # ── skip-existing 过滤 ──
     if args.skip_existing:
         def is_done(row):
-            out_path = Path(f"{args.base_dir}/data_sample_chunk{row['chunk_id']}/infer/{row['clip_id']}/data/inference_index_strict.csv")
+            out_path = Path(f"{args.output_dir}/data_sample_chunk{row['chunk_id']}/infer/{row['clip_id']}/data/inference_index_strict.csv")
             return out_path.exists()
 
         mask = clip_frame.apply(is_done, axis=1)
@@ -446,11 +540,18 @@ def main():
 
     print(f"\n{'=' * 60}")
     print(f"🚀 开始处理: {len(clip_frame)} clips, 并行数: {args.parallel}")
+    print(f"   源数据目录: {args.source_dir}")
+    print(f"   输出目录:   {args.output_dir}")
+    print(f"   pre_resize: {pre_resize}")
+    print(f"   jpg_quality: {args.jpg_quality}")
+    print(f"   save_numpy: {args.save_numpy}")
     print(f"{'=' * 60}\n")
 
     # ── 准备并行任务参数 ──
     task_args = [
-        (int(row["chunk_id"]), str(row["clip_id"]), args.base_dir, args.force)
+        (int(row["chunk_id"]), str(row["clip_id"]),
+         args.source_dir, args.output_dir,
+         pre_resize, args.save_numpy, args.jpg_quality, args.force)
         for _, row in clip_frame.iterrows()
     ]
 

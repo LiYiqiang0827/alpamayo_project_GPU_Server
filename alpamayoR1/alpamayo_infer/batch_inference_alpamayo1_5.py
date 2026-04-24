@@ -41,7 +41,7 @@ from einops import rearrange
 sys.path.insert(0, "/home/user/mikelee/alpamayo1.5-main/src")
 
 # Alpamayo 1.5 模型路径
-MODEL_PATH = "/data01/vla/models--nvidia--Alpamayo-1.5-10B"
+MODEL_PATH = "/data01/mikelee/weight/models--nvidia--Alpamayo-1.5-10B"
 CAMERA_ORDER = [
     "camera_cross_left_120fov",
     "camera_front_wide_120fov",
@@ -129,7 +129,7 @@ class DoubleBufferInference:
         self.cpu_buffer, self.gpu_buffer = self.gpu_buffer, self.cpu_buffer
 
 
-def discover_clips(chunk_id, clip_filter=None, base_dir="/data01/vla/data"):
+def discover_clips(chunk_id, clip_filter=None, base_dir="/data01/mikelee/data"):
     """发现所有已预处理的clips"""
     chunk_dir = f"{base_dir}/data_sample_chunk{chunk_id}/infer"
     if not os.path.exists(chunk_dir):
@@ -634,7 +634,7 @@ def main():
 
     # 发现clips
     print(f"\n📂 扫描clips...")
-    clips = discover_clips(args.chunk, clip_filter=clip_filter)
+    clips = discover_clips(args.chunk, clip_filter=clip_filter, base_dir="/data01/mikelee/data")
     print(f"发现 {len(clips)} 个clips")
 
     # 收集待处理帧

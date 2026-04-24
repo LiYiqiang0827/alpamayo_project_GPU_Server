@@ -23,7 +23,7 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 CHUNK_DIR_TEMPLATE = "data_sample_chunk{id}"  # 如 data_sample_chunk1, data_sample_chunk10
-BASE_DIR = "/data01/mikelee/data"
+BASE_DIR = "/gpfs-data/mikelee/data"
 
 
 def parse_chunks(chunks_str: str):
@@ -76,13 +76,10 @@ def unzip_file(zip_path: Path) -> tuple[str, bool, str]:
 def verify_extraction(zip_path: Path) -> tuple[bool, str]:
     """
     验证解压是否完整。
-    检查解压出来的目录里是否包含预期的文件。
-    camera zip → 应有 .mp4 文件
-    egomotion zip → 应有 .parquet 文件
+    检查解压出来的文件数量和文件名是否与 zip 内完全一致。
     Returns: (complete, message)
     """
     target_dir = zip_path.parent
-    zip_name = zip_path.stem  # 去掉 .zip
 
     try:
         with zipfile.ZipFile(zip_path, "r") as zf:
@@ -93,38 +90,53 @@ def verify_extraction(zip_path: Path) -> tuple[bool, str]:
     if not archived_names:
         return False, "zip 内文件列表为空"
 
-    # 取第一个文件判断类型（路径格式: uuid.camera_type.xxx 或 uuid.egomotion.xxx）
-    first_file = archived_names[0]
-    is_camera = ".camera_" in first_file or any(
-        f".{cam}." in first_file
-        for cam in ["front_wide", "front_tele", "cross_left", "cross_right"]
-    )
-    is_egomotion = ".egomotion." in first_file
+    # 从 zip 内文件名列表提取实际文件名（去掉可能的路径前缀）
+    archived_basenames = set()
+    for name in archived_names:
+        basename = name.rsplit("/", 1)[-1]
+        if basename:
+            archived_basenames.add(basename)
 
-    if is_camera:
-        # camera zip → 检查是否有 mp4 文件
-        expected_ext = ".mp4"
-        actual_files = list(target_dir.glob(f"*{expected_ext}"))
-        if len(actual_files) > 0:
-            return True, f"验证通过 ({len(actual_files)} 个 mp4)"
+    # 统计目标目录内文件
+    actual_files = {}
+    for f in target_dir.iterdir():
+        if f.is_file():
+            actual_files[f.name] = f
+
+    # 检查每个 zip 内的文件是否都解压出来了
+    missing = []
+    mismatched = []
+    extra = []
+    for arch_name in archived_basenames:
+        if arch_name not in actual_files:
+            missing.append(arch_name)
         else:
-            return False, f"未找到 mp4 文件"
-    elif is_egomotion:
-        # egomotion zip → 检查是否有 parquet 文件
-        expected_ext = ".parquet"
-        actual_files = list(target_dir.glob(f"*{expected_ext}"))
-        if len(actual_files) > 0:
-            return True, f"验证通过 ({len(actual_files)} 个 parquet)"
-        else:
-            return False, f"未找到 parquet 文件"
-    else:
-        # 兜底：检查解压出的文件数是否与 zip 内一致
-        actual_count = sum(1 for _ in target_dir.iterdir())
-        archived_count = len(archived_names)
-        if actual_count >= archived_count:
-            return True, f"验证通过 ({actual_count} 个文件)"
-        else:
-            return False, f"文件数不足: zip内{archived_count}个, 实际{actual_count}个"
+            if actual_files[arch_name].stat().st_size == 0:
+                mismatched.append(f"{arch_name} (0 bytes)")
+
+    for actual_name in actual_files:
+        if actual_name not in archived_basenames and not actual_name.startswith(".") and actual_name != zip_path.name:
+            extra.append(actual_name)
+
+    if missing or mismatched or extra:
+        msg_parts = []
+        if missing:
+            s = f"缺失 {len(missing)} 个: {missing[:3]}"
+            if len(missing) > 3:
+                s += "..."
+            msg_parts.append(s)
+        if mismatched:
+            msg_parts.append(f"损坏 {len(mismatched)} 个: {mismatched}")
+        if extra:
+            s = f"多余 {len(extra)} 个: {extra[:3]}"
+            if len(extra) > 3:
+                s += "..."
+            msg_parts.append(s)
+        return False, "; ".join(msg_parts)
+
+    return True, f"验证通过 ({len(archived_basenames)} 个文件，名称和数量完全一致)"
+
+
 
 
 def delete_zip(zip_path: Path) -> tuple[bool, str]:

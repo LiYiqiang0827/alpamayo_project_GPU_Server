@@ -39,10 +39,11 @@ CAMERAS = [
 # ─────────────────────────────────────────────────────────────────────────────
 
 def get_all_clips_in_chunk(data_root):
-    labels_dir = Path(data_root) / "labels" / "egomotion"
-    if not labels_dir.exists():
+    # 新版：infer 输出目录结构，从 infer/{clip_id}/data 目录中发现 clips
+    infer_root = Path(data_root) / "infer"
+    if not infer_root.exists():
         return []
-    return sorted(f.stem.replace(".egomotion", "") for f in labels_dir.glob("*.egomotion.parquet"))
+    return sorted([d.name for d in infer_root.iterdir() if d.is_dir()])
 
 
 def build_clip_frame(chunks_str, clips_str, base_dir):
@@ -132,7 +133,10 @@ def reduce_clip(chunk_id, clip_id, base_dir, step):
             if img_file.suffix.lower() not in (".jpg", ".jpeg"):
                 continue
             try:
-                frame_idx = int(img_file.stem)  # filename: 000000.jpg -> frame index
+                stem = img_file.stem
+                if stem.endswith("_small"):
+                    stem = stem[:-6]
+                frame_idx = int(stem)
             except ValueError:
                 continue
 
