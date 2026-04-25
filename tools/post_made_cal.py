@@ -213,6 +213,8 @@ def main():
                         help='推理结果名称或路径, 如 infer_result_20260424_010530')
     parser.add_argument('--parallel', type=int, default=30,
                         help='并行进程数 (默认 30)')
+    parser.add_argument('--stat_enable', type=bool, default=True,
+                        help='计算完成后自动调用 post_made_stat.py 进行统计 (默认 True)')
     args = parser.parse_args()
 
     # 解析路径
@@ -312,6 +314,26 @@ def main():
         print(f"    Max:   {valid_ades.max():.4f}")
         print(f"    Std:   {valid_ades.std():.4f}")
     print(f"{'=' * 60}")
+
+    # Step 5: 自动调用 post_made_stat.py（如果启用）
+    if args.stat_enable:
+        print(f"\n[5/5] 自动调用 post_made_stat.py 进行统计 ...")
+        stat_script = os.path.join(os.path.dirname(__file__), "post_made_stat.py")
+        if os.path.exists(stat_script):
+            import subprocess
+            cmd = [
+                sys.executable, stat_script,
+                '--infer_result', infer_result_dir
+            ]
+            try:
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                print(result.stdout)
+                if result.returncode != 0:
+                    print(f"警告: post_made_stat.py 执行失败: {result.stderr}")
+            except Exception as e:
+                print(f"警告: 调用 post_made_stat.py 时出错: {e}")
+        else:
+            print(f"警告: 未找到 post_made_stat.py: {stat_script}")
 
 
 if __name__ == '__main__':
