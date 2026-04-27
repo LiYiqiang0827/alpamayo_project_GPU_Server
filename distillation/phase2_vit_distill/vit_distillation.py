@@ -361,7 +361,7 @@ class DummyStudentViT(nn.Module):
         final = self.output_proj(x[:, 0])  # [CLS] token
         
         # Return (final, deepstack_list) tuple - deepstack must be projected to 2048
-        deepstack = [self.deepstack_proj(all_hidden[i][:, 0]) for i in [5, 11, 17]]
+        deepstack = [all_hidden[i][:, 0] for i in [5, 11, 17]]  # Return unprojected 1024-dim
         return final, deepstack
 
 
@@ -484,7 +484,8 @@ def train_step(
             )
             
             # Get student features
-            student_final, student_deepstack = student(pixel_values)
+            # Get student features via distill_module to apply deepstack projection
+            student_final, student_deepstack = distill_module.forward_student(pixel_values)
             
             # Project teacher features to student dimension
             teacher_final_proj, teacher_deepstack_proj = distill_module.project_teacher_features(
@@ -519,7 +520,7 @@ def train_step(
                 pixel_values, teacher
             )
         
-        student_final, student_deepstack = student(pixel_values)
+        student_final, student_deepstack = distill_module.forward_student(pixel_values)
         teacher_final_proj, teacher_deepstack_proj = distill_module.project_teacher_features(
             teacher_final, teacher_deepstack
         )
@@ -564,16 +565,15 @@ def evaluate(
         for batch in eval_loader:
             pixel_values = batch["pixel_values"].to(device)
             
-            # Teacher features
-            teacher_outputs = teacher(pixel_values, output_hidden_states=True)
-            teacher_final = teacher_outputs.last_hidden_state[:, 0]
-            teacher_hidden = teacher_outputs.hidden_states
-            teacher_deepstack = [teacher_hidden[layer][:, 0] for layer in config.teacher_deepstack_layers]
+            # Teacher features - use get_teacher_features to apply proper projection
+            teacher_final, teacher_deepstack = distill_module.get_teacher_features(
+                pixel_values, teacher
+            )
             
             # Student features
-            student_final, student_deepstack = student(pixel_values)
+            student_final, student_deepstack = distill_module.forward_student(pixel_values)
             
-            # Project teacher features
+            # Project teacher features to student dimension for comparison
             teacher_final_proj, teacher_deepstack_proj = distill_module.project_teacher_features(
                 teacher_final, teacher_deepstack
             )
