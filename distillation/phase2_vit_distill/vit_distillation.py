@@ -560,7 +560,7 @@ def evaluate(
     return metrics
 
 
-def save_checkpoint(student, optimizer, scaler, step, config, output_dir, distill_module=None, rank: int = 0):
+def save_checkpoint(student, optimizer, scaler, step, epoch, config, output_dir, distill_module=None, rank: int = 0, is_best: bool = False):
     """Save model checkpoint."""
     if rank != 0:
         return
@@ -572,6 +572,7 @@ def save_checkpoint(student, optimizer, scaler, step, config, output_dir, distil
     
     ckpt = {
         "step": step,
+        "epoch": epoch,
         "student_state_dict": student.state_dict(),
         "optimizer_state_dict": optimizer.state_dict(),
         "config": asdict(config),
@@ -582,6 +583,14 @@ def save_checkpoint(student, optimizer, scaler, step, config, output_dir, distil
         ckpt["scaler_state_dict"] = scaler.state_dict()
     
     torch.save(ckpt, ckpt_path)
+    
+    if is_best:
+        best_dir = os.path.join(config.output_dir, "best_model")
+        os.makedirs(best_dir, exist_ok=True)
+        best_path = os.path.join(best_dir, "checkpoint_best.pt")
+        torch.save(ckpt, best_path)
+        print(f"Saved best checkpoint to {best_path}")
+    
     print(f"Saved checkpoint to {ckpt_path}")
 
 
@@ -818,7 +827,7 @@ def main():
             
             # Save checkpoint every 5000 steps
             if step % 5000 == 0:
-                save_checkpoint(student, optimizer, scaler, step, config, 
+                save_checkpoint(student, optimizer, scaler, step, epoch, config, 
                               str(output_root), distill_module, rank, is_best=False)
                 
                 # Validate after each checkpoint
@@ -838,7 +847,7 @@ def main():
                     # Check if this is the best model
                     is_best = tracker.update(step, loss_dict['total_loss'], metrics)
                     if is_best:
-                        save_checkpoint(student, optimizer, scaler, step, config, 
+                        save_checkpoint(student, optimizer, scaler, step, epoch, config, 
                                       str(output_root), distill_module, rank, is_best=True)
                         logger.info(f"★★★ New best model at step {step}! Val loss: {tracker.best_val_loss:.6f} ★★★")
                     
@@ -853,7 +862,7 @@ def main():
     if rank == 0:
         final_dir = os.path.join(config.output_dir, f"epoch_{epoch}")
         os.makedirs(final_dir, exist_ok=True)
-        save_checkpoint(student, optimizer, scaler, step, config, final_dir, distill_module, rank)
+        save_checkpoint(student, optimizer, scaler, step, epoch, config, final_dir, distill_module, rank)
         logger.info("Training complete!")
     
     # Cleanup
