@@ -1,0 +1,24 @@
+{
+  "num_samples": 100,
+  "num_batches": 25,
+  "final_mse_mean": 0.11040639758110046,
+  "final_mse_std": 0.0002813894348044041,
+  "final_cos_sim_mean": -0.007116379681974649,
+  "final_cos_sim_std": 0.0005945093745992095,
+  "deepstack_mse_mean": 0.012559549945096173,
+  "deepstack_mse_std": 3.9732811008327517e-05,
+  "deepstack_cos_sim_mean": 0.0019208193880816302,
+  "deepstack_cos_sim_std": 0.0006102798464759367,
+  "teacher": "Alpamayo-1.5-10B (27 blocks, 1152 hidden, 4096 output)",
+  "student": "Cosmos + trained checkpoint (24 blocks, 1024 hidden, 2048 output)",
+  "deepstack_teacher": [
+    9,
+    17,
+    25
+  ],
+  "deepstack_student": [
+    5,
+    11,
+    17
+  ]
+}

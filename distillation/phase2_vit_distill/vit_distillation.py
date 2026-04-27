@@ -53,6 +53,7 @@ from torch.cuda.amp import autocast, GradScaler
 # Local modules
 from vit_projector import VisionDistillationModule, build_vision_distillation_module
 from vit_loss import vit_distillation_loss, ViTDistillationLoss
+from real_teacher import build_real_teacher_vit_model
 
 # Try importing DeepSpeed
 try:
@@ -195,22 +196,15 @@ def load_teacher_model(model_path: str, device: torch.device, rank: int = 0,
             teacher = AutoModel.from_pretrained(model_path)
             log(f"[Rank {rank}] Loaded teacher as HuggingFace model")
         except Exception as e:
-            log(f"[Rank {rank}] Warning: Could not auto-load model: {e}")
-            # Return a dummy model for testing
-            teacher = DummyTeacherViT()
-            log(f"[Rank {rank}] Using dummy teacher model for testing")
+            raise RuntimeError(f"[Rank {rank}] Could not load teacher model: {e}")
     else:
         # Standard checkpoint loading
         try:
-            from safetensors.torch import load_file
-            state_dict = load_file(ckpt_files[0])
-            # Load into model - needs to be implemented based on actual architecture
+            # Build the teacher model (which loads weights internally)
             teacher = _build_teacher_vit_model()
-            teacher.load_state_dict(state_dict, strict=False)
-            log(f"[Rank {rank}] Loaded teacher checkpoint from {ckpt_files[0]}")
+            log(f"[Rank {rank}] Loaded teacher from checkpoint")
         except Exception as e:
-            log(f"[Rank {rank}] Warning: {e}, using dummy teacher")
-            teacher = DummyTeacherViT()
+            raise RuntimeError(f"[Rank {rank}] Could not load teacher checkpoint: {e}")
     
     teacher = teacher.to(device)
     teacher.eval()
@@ -234,7 +228,7 @@ def load_student_model(model_path: str, device: torch.device, rank: int = 0,
     
     model_path = os.path.expanduser(model_path)
     
-    # Check if path exists, if not create dummy
+    # Check if path exists, if not raise error
     if not os.path.exists(model_path):
         raise FileNotFoundError(f"[Rank {rank}] Student model path not found: {model_path}")
     else:
@@ -258,10 +252,11 @@ def load_student_model(model_path: str, device: torch.device, rank: int = 0,
 
 
 def _build_teacher_vit_model() -> nn.Module:
-    """Build teacher ViT architecture (Alpamayo1.5-10B ViT)."""
-    # Placeholder - replace with actual architecture
-    # Teacher: 27 layers, hidden=1152, output=4096
-    return DummyTeacherViT()
+    """Build real Alpamayo Vision Encoder from checkpoint."""
+    return build_real_teacher_vit_model(
+        '/data01/mikelee/weight/models--nvidia--Alpamayo-1.5-10B/',
+        device=torch.device('cpu')
+    )
 
 
 class Qwen3VLWrapper(nn.Module):
@@ -328,72 +323,6 @@ def _build_student_vit_model() -> nn.Module:
 
 
 # ----------------------------------------------------------------------
-# Dummy models for testing (when real checkpoints unavailable)
-# ----------------------------------------------------------------------
-
-class DummyTeacherViT(nn.Module):
-    """Dummy Teacher ViT for testing: 27 layers, hidden=1152, output=4096."""
-    def __init__(self):
-        super().__init__()
-        self.layers = nn.ModuleList([
-            nn.Linear(1152, 1152) for _ in range(27)
-        ])
-        self.output_proj = nn.Linear(1152, 4096)
-        self.deepstack_indices = [8, 16, 24]
-        
-    def forward(self, pixel_values, output_hidden_states=False):
-        B, C, H, W = pixel_values.shape
-        x = torch.randn(B, 197, 1152, device=pixel_values.device, dtype=pixel_values.dtype)
-        
-        all_hidden = [x]
-        for i, layer in enumerate(self.layers):
-            x = layer(x)
-            all_hidden.append(x)
-        
-        final = self.output_proj(x[:, 0])  # [B, 4096]
-        
-        if output_hidden_states:
-            # Return hidden states as tuple, last one is final output
-            # But add sequence dimension to match real ViT output format: [B, 1, 4096]
-            hidden_states_tuple = tuple(all_hidden)
-            # Create a dummy NamedTuple-like object with sequence dimension
-            class HiddenStates:
-                def __init__(self, states, final_out):
-                    self.hidden_states = states
-                    # last_hidden_state should be unprojected [B, 1, 1152] to match real ViT
-                    self.last_hidden_state = x[:, 0].unsqueeze(1)
-            return HiddenStates(hidden_states_tuple, final)
-        return final
-
-
-class DummyStudentViT(nn.Module):
-    """Dummy Student ViT for testing: 24 layers, hidden=1024, output=2048."""
-    def __init__(self):
-        super().__init__()
-        self.layers = nn.ModuleList([
-            nn.Linear(1024, 1024) for _ in range(24)
-        ])
-        self.output_proj = nn.Linear(1024, 2048)
-        self.deepstack_proj = nn.Linear(1024, 2048)
-        self.deepstack_indices = [5, 11, 17]
-        
-    def forward(self, pixel_values):
-        B, C, H, W = pixel_values.shape
-        x = torch.randn(B, 197, 1024, device=pixel_values.device, dtype=pixel_values.dtype)
-        
-        all_hidden = [x]
-        for i, layer in enumerate(self.layers):
-            x = layer(x)
-            all_hidden.append(x)
-        
-        final = self.output_proj(x[:, 0])  # [CLS] token
-        
-        # Return (final, deepstack_list) tuple - deepstack must be projected to 2048
-        deepstack = [all_hidden[i][:, 0] for i in [5, 11, 17]]  # Return unprojected 1024-dim
-        return final, deepstack
-
-
-# ----------------------------------------------------------------------
 # Dataset
 # ----------------------------------------------------------------------
 
@@ -457,7 +386,7 @@ class ImageInferenceDataset(torch.utils.data.Dataset):
         try:
             img = Image.open(img_path).convert('RGB')
         except Exception as e:
-            # Return a dummy image if loading fails
+            # Skip failed images
             img = Image.new('RGB', (self.image_size, self.image_size), color='gray')
         
         if self.transform:

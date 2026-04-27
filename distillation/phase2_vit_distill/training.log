@@ -1,0 +1,193 @@
+W0427 19:41:08.209000 2422511 site-packages/torch/distributed/run.py:774] 
+W0427 19:41:08.209000 2422511 site-packages/torch/distributed/run.py:774] *****************************************
+W0427 19:41:08.209000 2422511 site-packages/torch/distributed/run.py:774] Setting OMP_NUM_THREADS environment variable for each process to be 1 in default, to avoid your system being overloaded, please further tune the variable for optimal performance in your application as needed. 
+W0427 19:41:08.209000 2422511 site-packages/torch/distributed/run.py:774] *****************************************
+Starting ViT distillation. Rank=0, World size=3
+Config: {'teacher_model_path': '/data01/mikelee/weight/models--nvidia--Alpamayo-1.5-10B/', 'student_model_path': '/home/user/cosmos_reason2_expanded/', 'data_path': '/data01/mikelee/data/', 'output_dir': '/gpfs-data/mikelee/distillation_output', 'train_chunks': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26], 'val_chunks': [27, 28, 29], 'samples_per_epoch': 100000, 'val_samples': 2000, 'teacher_hidden': 1152, 'teacher_output': 4096, 'teacher_layers': 27, 'teacher_deepstack_layers': [8, 16, 24], 'student_hidden': 1024, 'student_output': 2048, 'student_layers': 24, 'student_deepstack_layers': [5, 11, 17], 'projector_hidden': 1024, 'dropout': 0.1, 'num_gpus': 3, 'batch_size_per_gpu': 4, 'gradient_accumulation_steps': 1, 'learning_rate': 0.0001, 'weight_decay': 0.01, 'max_grad_norm': 1.0, 'num_epochs': 10, 'warmup_steps': 1000, 'max_steps': 100000, 'alpha_final': 1.0, 'alpha_deepstack': 0.5, 'alpha_norm': 0.01, 'fp16': True, 'bf16': False, 'use_deepspeed': False, 'deepspeed_config_path': './deepspeed_config.json', 'seed': 42, 'log_interval': 50, 'eval_interval': 5000, 'save_interval': 2500, 'resume': None, 'debug': False}
+Loading teacher model...
+[Rank 0] Loading teacher model from: /data01/mikelee/weight/models--nvidia--Alpamayo-1.5-10B/
+Loaded 351 visual weights from checkpointLoaded 351 visual weights from checkpointLoaded 351 visual weights from checkpoint
+
+
+AlpamayoVisionEncoder: 27 blocks, hidden=1152, output=4096
+AlpamayoVisionEncoder: 27 blocks, hidden=1152, output=4096
+AlpamayoVisionEncoder: 27 blocks, hidden=1152, output=4096
+[Rank 0] Loaded teacher from checkpoint
+[Student] Loading base Cosmos-Reason2-2B from /home/user/cosmos_reason2_expanded/
+[Student] Loading base Cosmos-Reason2-2B from /home/user/cosmos_reason2_expanded/
+[Rank 0] Teacher model loaded. Total params: 417,962,224
+Loading student model...
+[Rank 0] Loading student model from: /home/user/cosmos_reason2_expanded/
+[Student] Loading base Cosmos-Reason2-2B from /home/user/cosmos_reason2_expanded/
+  Cosmos: 626 keys  Cosmos: 626 keys
+
+  Cosmos: 626 keys
+[Student] CosmosVisionEncoder loaded (inter=4096 MLP, no checkpoint override)
+[Student] CosmosVisionEncoder loaded (inter=4096 MLP, no checkpoint override)
+[Student] CosmosVisionEncoder loaded (inter=4096 MLP, no checkpoint override)
+[Rank 0] Loaded student checkpoint
+NCCL version 2.27.3+cuda12.9
+[rank2]:[W427 19:41:22.737524050 Utils.hpp:137] Warning: Environment variable TORCH_NCCL_TRACE_BUFFER_SIZE is deprecated; use TORCH_FR_BUFFER_SIZE instead (function operator())
+[rank0]:[W427 19:41:22.737597687 Utils.hpp:137] Warning: Environment variable TORCH_NCCL_TRACE_BUFFER_SIZE is deprecated; use TORCH_FR_BUFFER_SIZE instead (function operator())
+[rank1]:[W427 19:41:22.737753974 Utils.hpp:137] Warning: Environment variable TORCH_NCCL_TRACE_BUFFER_SIZE is deprecated; use TORCH_FR_BUFFER_SIZE instead (function operator())
+/home/user/mikelee/alpamayo_project/distillation/phase2_vit_distill/vit_distillation.py:786: FutureWarning: `torch.cuda.amp.GradScaler(args...)` is deprecated. Please use `torch.amp.GradScaler('cuda', args...)` instead.
+  scaler = GradScaler() if (config.fp16 and not config.bf16) else None
+/home/user/mikelee/alpamayo_project/distillation/phase2_vit_distill/vit_distillation.py:786: FutureWarning: `torch.cuda.amp.GradScaler(args...)` is deprecated. Please use `torch.amp.GradScaler('cuda', args...)` instead.
+  scaler = GradScaler() if (config.fp16 and not config.bf16) else None
+/home/user/mikelee/alpamayo_project/distillation/phase2_vit_distill/vit_distillation.py:786: FutureWarning: `torch.cuda.amp.GradScaler(args...)` is deprecated. Please use `torch.amp.GradScaler('cuda', args...)` instead.
+  scaler = GradScaler() if (config.fp16 and not config.bf16) else None
+
+╔═══════════════════════════════════════════════════════════════════════════════╗
+║           Alpamayo 1.5 ViT Vision Encoder Distillation                        ║
+║           Teacher: Alpamayo-1.5-10B  →  Student: Cosmos-Reason2-2B          ║
+╚═══════════════════════════════════════════════════════════════════════════════╝
+
+[Model Configuration]
+  Teacher Model:  Alpamayo-1.5-10B (NVIDIA)
+    Path: /data01/mikelee/weight/models--nvidia--Alpamayo-1.5-10B/
+    Architecture: 27 layers, hidden=1152, output=4096
+    Deepstack layers: [8, 16, 24]
+    
+  Student Model:  Cosmos-Reason2-2B / Qwen3.5-VL-2B
+    Base Path: /home/user/cosmos_reason2_expanded/
+    Architecture: 24 layers, hidden=1024, intermediate=4096, output=2048
+    Deepstack layers: [5, 11, 17]
+    Per-frame images: 16 (4 cameras × 4 temporal frames)
+
+[Training Configuration]
+  Dataset:
+    Train chunks: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26] (chunk 0-26)
+    Val chunks: [27, 28, 29] (chunk 27-29)
+    Samples per epoch: 100,000 frames
+    Val samples: 2,000 frames
+    Total train images: ~372,258 (all frames across chunks)
+  
+  Hyperparameters:
+    Learning rate: 0.0001
+    Batch size per GPU: 4
+    Number of GPUs: 3
+    Epochs: 10
+    Max steps: 100,000
+    Warmup steps: 1,000
+    Save interval: 2500 steps
+    Eval interval: 5000 steps
+    
+  Loss Weights:
+    alpha_final: 1.0
+    alpha_deepstack: 0.5
+    alpha_norm: 0.01
+
+[Training Start]
+  Timestamp: 2026-04-27 19:41:22
+  Output directory: /gpfs-data/mikelee/distillation_output/checkpoint_20260427_194122
+  
+═══════════════════════════════════════════════════════════════════════════════
+
+[ViTMultiImageDataset] Loaded 100,000 frames
+[ViTMultiImageDataset] Loaded 100,000 frames
+[ViTMultiImageDataset] Loaded 100,000 frames
+[ViTMultiImageDataset] Loaded 2,000 frames
+Train dataset: 100,000 frames (16 images each)
+Val dataset: 2,000 frames (16 images each)
+Trainable parameters: 472,552,448
+Starting training loop...
+[ViTMultiImageDataset] Loaded 2,000 frames
+[ViTMultiImageDataset] Loaded 2,000 frames
+[ViTMultiImageDataset] Resampled 100,000 frames (seed=42)
+Epoch 0: Resampled 100,000 training images
+[ViTMultiImageDataset] Resampled 100,000 frames (seed=42)
+[ViTMultiImageDataset] Resampled 100,000 frames (seed=42)
+/home/user/mikelee/alpamayo_project/distillation/phase2_vit_distill/vit_distillation.py:507: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with autocast(dtype=torch.float16):
+/home/user/mikelee/alpamayo_project/distillation/phase2_vit_distill/vit_distillation.py:507: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with autocast(dtype=torch.float16):
+/home/user/mikelee/alpamayo_project/distillation/phase2_vit_distill/vit_distillation.py:507: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with autocast(dtype=torch.float16):
+Epoch 0 | Step 50 | Loss: 3.1764 | Final MSE: 3.1206 | Deepstack MSE: 0.0975 | LR: 5.00e-06
+Epoch 0 | Step 100 | Loss: 0.0174 | Final MSE: 0.0105 | Deepstack MSE: 0.0007 | LR: 1.00e-05
+Epoch 0 | Step 150 | Loss: 0.0057 | Final MSE: 0.0029 | Deepstack MSE: 0.0001 | LR: 1.50e-05
+Epoch 0 | Step 200 | Loss: 0.0014 | Final MSE: 0.0007 | Deepstack MSE: 0.0000 | LR: 2.00e-05
+Epoch 0 | Step 250 | Loss: 0.0020 | Final MSE: 0.0018 | Deepstack MSE: 0.0000 | LR: 2.50e-05
+Epoch 0 | Step 300 | Loss: 0.0003 | Final MSE: 0.0003 | Deepstack MSE: 0.0000 | LR: 3.00e-05
+Epoch 0 | Step 350 | Loss: 0.0018 | Final MSE: 0.0018 | Deepstack MSE: 0.0000 | LR: 3.50e-05
+Epoch 0 | Step 400 | Loss: 0.0021 | Final MSE: 0.0020 | Deepstack MSE: 0.0002 | LR: 4.00e-05
+Epoch 0 | Step 450 | Loss: 0.0030 | Final MSE: 0.0029 | Deepstack MSE: 0.0001 | LR: 4.50e-05
+Epoch 0 | Step 500 | Loss: 0.0090 | Final MSE: 0.0082 | Deepstack MSE: 0.0016 | LR: 5.00e-05
+Epoch 0 | Step 550 | Loss: 0.0047 | Final MSE: 0.0047 | Deepstack MSE: 0.0001 | LR: 5.50e-05
+Epoch 0 | Step 600 | Loss: 0.0045 | Final MSE: 0.0044 | Deepstack MSE: 0.0001 | LR: 6.00e-05
+Epoch 0 | Step 650 | Loss: 0.0038 | Final MSE: 0.0037 | Deepstack MSE: 0.0002 | LR: 6.50e-05
+Epoch 0 | Step 700 | Loss: 0.0037 | Final MSE: 0.0036 | Deepstack MSE: 0.0002 | LR: 7.00e-05
+Epoch 0 | Step 750 | Loss: 0.0060 | Final MSE: 0.0058 | Deepstack MSE: 0.0003 | LR: 7.50e-05
+Epoch 0 | Step 800 | Loss: 0.0053 | Final MSE: 0.0052 | Deepstack MSE: 0.0002 | LR: 8.00e-05
+Epoch 0 | Step 850 | Loss: 0.0032 | Final MSE: 0.0031 | Deepstack MSE: 0.0001 | LR: 8.50e-05
+Epoch 0 | Step 900 | Loss: 0.0087 | Final MSE: 0.0086 | Deepstack MSE: 0.0001 | LR: 9.00e-05
+Epoch 0 | Step 950 | Loss: 0.0097 | Final MSE: 0.0097 | Deepstack MSE: 0.0001 | LR: 9.50e-05
+Epoch 0 | Step 1000 | Loss: 0.0054 | Final MSE: 0.0053 | Deepstack MSE: 0.0001 | LR: 1.00e-04
+Epoch 0 | Step 1050 | Loss: 0.0251 | Final MSE: 0.0251 | Deepstack MSE: 0.0000 | LR: 1.00e-04
+Epoch 0 | Step 1100 | Loss: 0.0099 | Final MSE: 0.0099 | Deepstack MSE: 0.0000 | LR: 1.00e-04
+Epoch 0 | Step 1150 | Loss: 0.0070 | Final MSE: 0.0069 | Deepstack MSE: 0.0000 | LR: 1.00e-04
+Epoch 0 | Step 1200 | Loss: 0.0083 | Final MSE: 0.0083 | Deepstack MSE: 0.0000 | LR: 1.00e-04
+Epoch 0 | Step 1250 | Loss: 0.0137 | Final MSE: 0.0136 | Deepstack MSE: 0.0000 | LR: 1.00e-04
+Epoch 0 | Step 1300 | Loss: 0.0143 | Final MSE: 0.0143 | Deepstack MSE: 0.0000 | LR: 1.00e-04
+Epoch 0 | Step 1350 | Loss: 0.0053 | Final MSE: 0.0053 | Deepstack MSE: 0.0000 | LR: 1.00e-04
+Epoch 0 | Step 1400 | Loss: 0.0098 | Final MSE: 0.0098 | Deepstack MSE: 0.0001 | LR: 1.00e-04
+Epoch 0 | Step 1450 | Loss: 0.0079 | Final MSE: 0.0078 | Deepstack MSE: 0.0001 | LR: 1.00e-04
+Epoch 0 | Step 1500 | Loss: 0.0056 | Final MSE: 0.0055 | Deepstack MSE: 0.0002 | LR: 1.00e-04
+Epoch 0 | Step 1550 | Loss: 0.0124 | Final MSE: 0.0122 | Deepstack MSE: 0.0005 | LR: 1.00e-04
+Epoch 0 | Step 1600 | Loss: 0.0081 | Final MSE: 0.0081 | Deepstack MSE: 0.0001 | LR: 1.00e-04
+Epoch 0 | Step 1650 | Loss: 0.0079 | Final MSE: 0.0078 | Deepstack MSE: 0.0001 | LR: 1.00e-04
+Epoch 0 | Step 1700 | Loss: 0.0113 | Final MSE: 0.0113 | Deepstack MSE: 0.0001 | LR: 1.00e-04
+Epoch 0 | Step 1750 | Loss: 0.0054 | Final MSE: 0.0053 | Deepstack MSE: 0.0002 | LR: 1.00e-04
+Epoch 0 | Step 1800 | Loss: 0.0114 | Final MSE: 0.0113 | Deepstack MSE: 0.0001 | LR: 1.00e-04
+Epoch 0 | Step 1850 | Loss: 0.0128 | Final MSE: 0.0127 | Deepstack MSE: 0.0003 | LR: 1.00e-04
+Epoch 0 | Step 1900 | Loss: 0.0176 | Final MSE: 0.0175 | Deepstack MSE: 0.0000 | LR: 1.00e-04
+Epoch 0 | Step 1950 | Loss: 0.0088 | Final MSE: 0.0087 | Deepstack MSE: 0.0000 | LR: 1.00e-04
+Epoch 0 | Step 2000 | Loss: 0.0077 | Final MSE: 0.0076 | Deepstack MSE: 0.0000 | LR: 1.00e-04
+Epoch 0 | Step 2050 | Loss: 0.0088 | Final MSE: 0.0088 | Deepstack MSE: 0.0001 | LR: 1.00e-04
+Epoch 0 | Step 2100 | Loss: 0.0319 | Final MSE: 0.0317 | Deepstack MSE: 0.0004 | LR: 1.00e-04
+Epoch 0 | Step 2150 | Loss: 0.0244 | Final MSE: 0.0244 | Deepstack MSE: 0.0000 | LR: 1.00e-04
+Epoch 0 | Step 2200 | Loss: 0.0128 | Final MSE: 0.0128 | Deepstack MSE: 0.0000 | LR: 1.00e-04
+Epoch 0 | Step 2250 | Loss: 0.0077 | Final MSE: 0.0077 | Deepstack MSE: 0.0000 | LR: 1.00e-04
+Epoch 0 | Step 2300 | Loss: 0.0096 | Final MSE: 0.0095 | Deepstack MSE: 0.0000 | LR: 1.00e-04
+Epoch 0 | Step 2350 | Loss: 0.0058 | Final MSE: 0.0057 | Deepstack MSE: 0.0001 | LR: 1.00e-04
+Epoch 0 | Step 2400 | Loss: 0.0090 | Final MSE: 0.0089 | Deepstack MSE: 0.0001 | LR: 1.00e-04
+Epoch 0 | Step 2450 | Loss: 0.0086 | Final MSE: 0.0085 | Deepstack MSE: 0.0001 | LR: 9.99e-05
+Epoch 0 | Step 2500 | Loss: 0.0047 | Final MSE: 0.0047 | Deepstack MSE: 0.0000 | LR: 9.99e-05
+Epoch 0 | Step 2550 | Loss: 0.0066 | Final MSE: 0.0065 | Deepstack MSE: 0.0002 | LR: 9.99e-05
+Epoch 0 | Step 2600 | Loss: 0.0081 | Final MSE: 0.0080 | Deepstack MSE: 0.0000 | LR: 9.99e-05
+Epoch 0 | Step 2650 | Loss: 0.0132 | Final MSE: 0.0131 | Deepstack MSE: 0.0003 | LR: 9.99e-05
+Epoch 0 | Step 2700 | Loss: 0.0112 | Final MSE: 0.0112 | Deepstack MSE: 0.0001 | LR: 9.99e-05
+Epoch 0 | Step 2750 | Loss: 0.0083 | Final MSE: 0.0082 | Deepstack MSE: 0.0001 | LR: 9.99e-05
+Epoch 0 | Step 2800 | Loss: 0.0220 | Final MSE: 0.0218 | Deepstack MSE: 0.0004 | LR: 9.99e-05
+Epoch 0 | Step 2850 | Loss: 0.0154 | Final MSE: 0.0154 | Deepstack MSE: 0.0000 | LR: 9.99e-05
+Epoch 0 | Step 2900 | Loss: 0.0082 | Final MSE: 0.0082 | Deepstack MSE: 0.0000 | LR: 9.99e-05
+Epoch 0 | Step 2950 | Loss: 0.0128 | Final MSE: 0.0128 | Deepstack MSE: 0.0000 | LR: 9.99e-05
+Epoch 0 | Step 3000 | Loss: 0.0121 | Final MSE: 0.0121 | Deepstack MSE: 0.0001 | LR: 9.99e-05
+Epoch 0 | Step 3050 | Loss: 0.0057 | Final MSE: 0.0057 | Deepstack MSE: 0.0000 | LR: 9.99e-05
+Epoch 0 | Step 3100 | Loss: 0.0110 | Final MSE: 0.0109 | Deepstack MSE: 0.0002 | LR: 9.99e-05
+Epoch 0 | Step 3150 | Loss: 0.0089 | Final MSE: 0.0089 | Deepstack MSE: 0.0001 | LR: 9.99e-05
+Epoch 0 | Step 3200 | Loss: 0.0113 | Final MSE: 0.0113 | Deepstack MSE: 0.0001 | LR: 9.99e-05
+Epoch 0 | Step 3250 | Loss: 0.0070 | Final MSE: 0.0070 | Deepstack MSE: 0.0000 | LR: 9.99e-05
+Epoch 0 | Step 3300 | Loss: 0.0114 | Final MSE: 0.0113 | Deepstack MSE: 0.0001 | LR: 9.99e-05
+Epoch 0 | Step 3350 | Loss: 0.0060 | Final MSE: 0.0059 | Deepstack MSE: 0.0000 | LR: 9.99e-05
+Epoch 0 | Step 3400 | Loss: 0.0068 | Final MSE: 0.0067 | Deepstack MSE: 0.0001 | LR: 9.99e-05
+Epoch 0 | Step 3450 | Loss: 0.0086 | Final MSE: 0.0086 | Deepstack MSE: 0.0001 | LR: 9.98e-05
+Epoch 0 | Step 3500 | Loss: 0.0059 | Final MSE: 0.0058 | Deepstack MSE: 0.0002 | LR: 9.98e-05
+Epoch 0 | Step 3550 | Loss: 0.0079 | Final MSE: 0.0079 | Deepstack MSE: 0.0001 | LR: 9.98e-05
+Epoch 0 | Step 3600 | Loss: 0.0118 | Final MSE: 0.0116 | Deepstack MSE: 0.0002 | LR: 9.98e-05
+Epoch 0 | Step 3650 | Loss: 0.0117 | Final MSE: 0.0116 | Deepstack MSE: 0.0001 | LR: 9.98e-05
+Epoch 0 | Step 3700 | Loss: 0.0095 | Final MSE: 0.0094 | Deepstack MSE: 0.0001 | LR: 9.98e-05
+Epoch 0 | Step 3750 | Loss: 0.0068 | Final MSE: 0.0068 | Deepstack MSE: 0.0001 | LR: 9.98e-05
+Epoch 0 | Step 3800 | Loss: 0.0049 | Final MSE: 0.0049 | Deepstack MSE: 0.0001 | LR: 9.98e-05
+Epoch 0 | Step 3850 | Loss: 0.0173 | Final MSE: 0.0171 | Deepstack MSE: 0.0004 | LR: 9.98e-05
+Epoch 0 | Step 3900 | Loss: 0.0254 | Final MSE: 0.0254 | Deepstack MSE: 0.0000 | LR: 9.98e-05
+Epoch 0 | Step 3950 | Loss: 0.0119 | Final MSE: 0.0119 | Deepstack MSE: 0.0000 | LR: 9.98e-05
+Epoch 0 | Step 4000 | Loss: 0.0120 | Final MSE: 0.0120 | Deepstack MSE: 0.0000 | LR: 9.98e-05
+Epoch 0 | Step 4050 | Loss: 0.0062 | Final MSE: 0.0062 | Deepstack MSE: 0.0000 | LR: 9.98e-05
+Epoch 0 | Step 4100 | Loss: 0.0071 | Final MSE: 0.0071 | Deepstack MSE: 0.0000 | LR: 9.98e-05
+Epoch 0 | Step 4150 | Loss: 0.0085 | Final MSE: 0.0084 | Deepstack MSE: 0.0000 | LR: 9.98e-05
+Epoch 0 | Step 4200 | Loss: 0.0059 | Final MSE: 0.0059 | Deepstack MSE: 0.0000 | LR: 9.97e-05
+Epoch 0 | Step 4250 | Loss: 0.0079 | Final MSE: 0.0078 | Deepstack MSE: 0.0001 | LR: 9.97e-05
+Epoch 0 | Step 4300 | Loss: 0.0090 | Final MSE: 0.0089 | Deepstack MSE: 0.0000 | LR: 9.97e-05
+Epoch 0 | Step 4350 | Loss: 0.0058 | Final MSE: 0.0057 | Deepstack MSE: 0.0001 | LR: 9.97e-05
+Epoch 0 | Step 4400 | Loss: 0.0068 | Final MSE: 0.0068 | Deepstack MSE: 0.0000 | LR: 9.97e-05

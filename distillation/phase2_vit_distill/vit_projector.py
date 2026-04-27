@@ -261,8 +261,9 @@ class VisionDistillationModule(nn.Module):
 
         # Also project final_output if it has sequence dim
         if final_output.dim() == 3:
-            final_output = final_output[:, 0, :]  # [B, hidden_dim]
-            final_output = self.deepstack_hidden_proj(final_output)  # [B, teacher_dim]
+            final_output = final_output[:, 0, :]  # [B, teacher_dim] (4096-dim from teacher merger)
+            # final_output is already 4096-dim from teacher merger - no projection needed here
+            # It will be projected to student_dim (2048) via project_teacher_features -> final_projector
 
         return final_output, deepstack_features
 
