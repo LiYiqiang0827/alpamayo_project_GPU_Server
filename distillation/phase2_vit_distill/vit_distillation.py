@@ -808,7 +808,7 @@ def main():
     
     while step < total_steps:
         # Resample training data for this epoch
-        if isinstance(train_dataset, MultiChunkImageDataset):
+        if isinstance(train_dataset, ViTMultiImageDataset):
             train_dataset.resample(seed=config.seed + epoch)
             logger.info(f"Epoch {epoch}: Resampled {len(train_dataset):,} training images")
         
@@ -862,7 +862,7 @@ def main():
                 if rank == 0:
                     logger.info(f"Validating at step {step}...")
                     # Resample validation set for this evaluation
-                    if isinstance(val_dataset, MultiChunkImageDataset):
+                    if isinstance(val_dataset, ViTMultiImageDataset):
                         val_dataset.resample(seed=config.seed + epoch + step)
                     
                     metrics = evaluate(teacher, student, distill_module, val_loader, 
