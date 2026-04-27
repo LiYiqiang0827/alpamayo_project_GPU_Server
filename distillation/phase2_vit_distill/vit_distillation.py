@@ -801,16 +801,33 @@ def main():
             start_step = ckpt.get("step", 0)
             logger.info(f"Resumed from step {start_step}")
     
-    # Training loop
+    # Training loop with epoch-based resampling
     logger.info("Starting training loop...")
     step = start_step
-    global_step = start_step
+    epoch = start_step // 7422  # Approximate epoch from step count
     
-    student.train()
-    
-    while global_step < total_steps:
+    while step < total_steps:
+        # Resample training data for this epoch
+        if isinstance(train_dataset, MultiChunkImageDataset):
+            train_dataset.resample(seed=config.seed + epoch)
+            logger.info(f"Epoch {epoch}: Resampled {len(train_dataset):,} training images")
+        
+        train_loader = DataLoader(
+            train_dataset,
+            batch_size=config.batch_size_per_gpu,
+            shuffle=True,
+            num_workers=4,
+            pin_memory=True,
+        )
+        
+        # Create epoch-specific checkpoint directory
+        epoch_dir = os.path.join(config.output_dir, f"epoch_{epoch}")
+        os.makedirs(epoch_dir, exist_ok=True)
+        
+        student.train()
+        
         for batch in train_loader:
-            if global_step >= total_steps:
+            if step >= total_steps:
                 break
             
             # Move batch to device
@@ -824,32 +841,44 @@ def main():
             )
             
             scheduler.step()
-            global_step += 1
             step += 1
             
             # Logging
             if rank == 0 and step % config.log_interval == 0:
                 lr = optimizer.param_groups[0]['lr']
                 logger.info(
-                    f"Step {step} | Loss: {loss_dict['total_loss']:.4f} | "
+                    f"Epoch {epoch} | Step {step} | Loss: {loss_dict['total_loss']:.4f} | "
                     f"Final MSE: {loss_dict['final_loss']:.4f} | "
                     f"Deepstack MSE: {loss_dict['deepstack_loss']:.4f} | "
                     f"LR: {lr:.2e}"
                 )
             
-            # Eval
-            if step % config.eval_interval == 0:
-                metrics = evaluate(teacher, student, distill_module, eval_loader, 
-                                config, device, logger, rank)
-            
-            # Save checkpoint
-            if step % config.save_interval == 0:
+            # Save checkpoint every 5000 steps
+            if step % 5000 == 0:
                 save_checkpoint(student, optimizer, scaler, step, config, 
-                              config.output_dir, distill_module, rank)
+                              epoch_dir, distill_module, rank)
+                
+                # Validate after each checkpoint
+                if rank == 0:
+                    logger.info(f"Validating at step {step}...")
+                    # Resample validation set for this evaluation
+                    if isinstance(val_dataset, MultiChunkImageDataset):
+                        val_dataset.resample(seed=config.seed + epoch + step)
+                    
+                    metrics = evaluate(teacher, student, distill_module, val_loader, 
+                                    config, device, logger, rank)
+                    logger.info(
+                        f"Val Results: final_mse={metrics['eval_final_mse']:.6f}, "
+                        f"deepstack_mse={metrics['eval_deepstack_mse']:.6f}"
+                    )
+        
+        epoch += 1
     
     # Final save
     if rank == 0:
-        save_checkpoint(student, optimizer, scaler, step, config, config.output_dir, distill_module, rank)
+        final_dir = os.path.join(config.output_dir, f"epoch_{epoch}")
+        os.makedirs(final_dir, exist_ok=True)
+        save_checkpoint(student, optimizer, scaler, step, config, final_dir, distill_module, rank)
         logger.info("Training complete!")
     
     # Cleanup
