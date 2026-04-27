@@ -508,12 +508,12 @@ def train_step(
         with autocast(dtype=torch.float16):
             # Get teacher features (properly projected to teacher_dim)
             teacher_final, teacher_deepstack = distill_module.get_teacher_features(
-                pixel_values, teacher
+                pixel_values[:, 0], teacher
             )
             
             # Get student features
             # Get student features via distill_module to apply deepstack projection
-            student_final, student_deepstack = distill_module.forward_student(pixel_values)
+            student_final, student_deepstack = distill_module.forward_student(pixel_values[:, 0])
             
             # Project teacher features to student dimension
             teacher_final_proj, teacher_deepstack_proj = distill_module.project_teacher_features(
@@ -536,7 +536,7 @@ def train_step(
         scaler.unscale_(optimizer)
         
         # Clip gradients
-        torch.nn.utils.clip_grad_norm_(student.parameters(), config.max_grad_norm)
+        torch.nn.utils.clip_grad_norm_(distill_module.parameters(), config.max_grad_norm)
         
         scaler.step(optimizer)
         scaler.update()
@@ -545,10 +545,10 @@ def train_step(
         with torch.no_grad():
             # Get teacher features (properly projected to teacher_dim)
             teacher_final, teacher_deepstack = distill_module.get_teacher_features(
-                pixel_values, teacher
+                pixel_values[:, 0], teacher
             )
         
-        student_final, student_deepstack = distill_module.forward_student(pixel_values)
+        student_final, student_deepstack = distill_module.forward_student(pixel_values[:, 0])
         teacher_final_proj, teacher_deepstack_proj = distill_module.project_teacher_features(
             teacher_final, teacher_deepstack
         )
@@ -564,7 +564,7 @@ def train_step(
         loss = loss_dict["total_loss"]
         
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(student.parameters(), config.max_grad_norm)
+        torch.nn.utils.clip_grad_norm_(distill_module.parameters(), config.max_grad_norm)
         optimizer.step()
     
     return {k: v.item() for k, v in loss_dict.items()}
@@ -595,11 +595,11 @@ def evaluate(
             
             # Teacher features - use get_teacher_features to apply proper projection
             teacher_final, teacher_deepstack = distill_module.get_teacher_features(
-                pixel_values, teacher
+                pixel_values[:, 0], teacher
             )
             
             # Student features
-            student_final, student_deepstack = distill_module.forward_student(pixel_values)
+            student_final, student_deepstack = distill_module.forward_student(pixel_values[:, 0])
             
             # Project teacher features to student dimension for comparison
             teacher_final_proj, teacher_deepstack_proj = distill_module.project_teacher_features(
@@ -766,7 +766,7 @@ def main():
     )
     
     # Optimizer (only student + projectors trainable)
-    trainable_params = list(student.parameters()) + list(distill_module.parameters())
+    trainable_params = list(distill_module.parameters())  # student is already in distill_module via set_student_vit
     optimizer = torch.optim.AdamW(
         trainable_params,
         lr=config.learning_rate,
@@ -845,7 +845,7 @@ def main():
     while step < total_steps:
         # Resample training data for this epoch
         if isinstance(train_dataset, ViTMultiImageDataset):
-            train_dataset.resample(seed=config.seed + epoch)
+            train_dataset.resample(new_seed=config.seed + epoch)
             logger.info(f"Epoch {epoch}: Resampled {len(train_dataset):,} training images")
         
         train_loader = DataLoader(
@@ -899,11 +899,11 @@ def main():
                     logger.info(f"Validating at step {step}...")
                     # Resample validation set for this evaluation
                     if isinstance(val_dataset, ViTMultiImageDataset):
-                        val_dataset.resample(seed=config.seed + epoch + step)
+                        val_dataset.resample(new_seed=config.seed + epoch + step)
                     
                     # Resample validation set for this evaluation
                     if isinstance(val_dataset, ViTMultiImageDataset):
-                        val_dataset.resample(seed=config.seed + epoch + step)
+                        val_dataset.resample(new_seed=config.seed + epoch + step)
                     
                     metrics = evaluate(teacher, student, distill_module, val_loader, 
                                     config, device, logger, rank)
