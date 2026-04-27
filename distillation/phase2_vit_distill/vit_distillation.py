@@ -288,28 +288,24 @@ class Qwen3VLWrapper(nn.Module):
 
 
 def _build_student_vit_model() -> nn.Module:
-    """Build student ViT architecture (Cosmos-2B expanded ViT)."""
-    import glob as glob_mod
+    """Build student ViT architecture (Cosmos-2B expanded ViT).
+    
+    Uses ONLY base Cosmos weights - no trained checkpoint override.
+    Architecture matches Qwen3.5-VL-2B / Cosmos-Reason2-2B exactly:
+    - hidden_size: 1024, intermediate_size: 4096, depth: 24, out_hidden_size: 2048
+    """
     from safetensors.torch import load_file
-    import torch
     
     cosmos_path = os.path.expanduser("~/cosmos_reason2_expanded/")
-    ckpt_path = "/gpfs-data/mikelee/distillation_output/checkpoints/checkpoint_step_9500.pt"
     
-    print(f"[Student] Loading base Cosmos from {cosmos_path}")
+    print(f"[Student] Loading base Cosmos-Reason2-2B from {cosmos_path}")
     cosmos_sd = load_file(os.path.join(cosmos_path, "model-expanded.safetensors"))
     cosmos_sd = {k: v.float() for k, v in cosmos_sd.items()}
     print(f"  Cosmos: {len(cosmos_sd)} keys")
     
-    print(f"[Student] Loading trained checkpoint from {ckpt_path}")
-    ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
-    ckpt_sd = ckpt.get("student_state_dict", ckpt)
-    ckpt_sd = {k.replace("module.", ""): v for k, v in ckpt_sd.items()}
-    print(f"  Checkpoint: {len(ckpt_sd)} keys")
-    
     from eval_vit_real import CosmosVisionEncoder
-    student = CosmosVisionEncoder(cosmos_sd, ckpt_sd, deepstack_layers=[5, 11, 17])
-    print("[Student] CosmosVisionEncoder loaded successfully")
+    student = CosmosVisionEncoder(cosmos_sd, deepstack_layers=[5, 11, 17])
+    print("[Student] CosmosVisionEncoder loaded (inter=4096 MLP, no checkpoint override)")
     return student
 
 

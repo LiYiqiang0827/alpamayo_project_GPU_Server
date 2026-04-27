@@ -308,13 +308,19 @@ class CosmosMerger(nn.Module):
 
 class CosmosVisionEncoder(nn.Module):
     """
-    Cosmos-Reason2 expanded vision encoder with trained checkpoint weights.
+    Cosmos-Reason2-2B / Qwen3.5-VL-2B Vision Encoder.
     
-    Key: The checkpoint MLP weights are [1024, 1024] - meaning the student was 
-    trained with inter_size=1024 (no MLP expansion), NOT inter_size=4096 from Cosmos.
-    We override the MLP layers with the trained [1024, 1024] weights.
+    Architecture (confirmed from config.json):
+    - hidden_size: 1024
+    - intermediate_size: 4096 (MLP expansion: 1024 -> 4096 -> 1024)
+    - depth: 24
+    - out_hidden_size: 2048 (via merger: 1024 -> 4096 -> 2048)
+    - deepstack_layers: [5, 11, 17]
+    - patch_size: 16
+    
+    This matches exactly Qwen3.5-VL-2B and Cosmos-Reason2-2B vision encoder.
     """
-    def __init__(self, cosmos_sd, ckpt_sd, deepstack_layers=[5, 11, 17]):
+    def __init__(self, cosmos_sd, deepstack_layers=[5, 11, 17]):
         super().__init__()
         self.deepstack_layers = deepstack_layers
         
@@ -328,30 +334,13 @@ class CosmosVisionEncoder(nn.Module):
         pos_w = cosmos_sd["model.visual.pos_embed.weight"].float()
         self.pos_embed = nn.Embedding.from_pretrained(pos_w, freeze=True)
         
-        # Load checkpoint to get trained MLP inter_size
-        clean = {k.replace("module.", ""): v for k, v in ckpt_sd.items()}
-        trained_mlp_w = clean["layers.0.weight"].float()
-        trained_inter_size = trained_mlp_w.shape[0]  # Should be 1024
-        trained_hidden_size = trained_mlp_w.shape[1]  # Should be 1024
-        print(f"  Trained MLP: hidden={trained_hidden_size}, inter={trained_inter_size}")
-        
-        # 24 transformer blocks, override MLP with trained weights
+        # 24 transformer blocks with MLP expansion (inter=4096)
         self.blocks = nn.ModuleList([
-            CosmosAttentionBlock(cosmos_sd, i, hidden_size=1024, inter_size=trained_inter_size) 
+            CosmosAttentionBlock(cosmos_sd, i, hidden_size=1024, inter_size=4096) 
             for i in range(24)
         ])
         
-        # Override MLP weights with trained checkpoint
-        for i in range(24):
-            w = clean[f"layers.{i}.weight"].float()   # [1024, 1024]
-            b = clean[f"layers.{i}.bias"].float()      # [1024]
-            self.blocks[i].mlp_fc1.weight.data = w
-            self.blocks[i].mlp_fc1.bias.data = b
-            # mlp_fc2 is identity (trained model has no expansion)
-            self.blocks[i].mlp_fc2.weight.data = torch.eye(1024)
-            self.blocks[i].mlp_fc2.bias.data = torch.zeros(1024)
-        
-        # Final merger (pre-norm, 1024->4096->2048)
+        # Final merger (pre-norm): 1024 -> 4096 -> 2048
         self.final_merger = CosmosMerger(
             cosmos_sd["model.visual.merger.norm.weight"].float(),
             cosmos_sd["model.visual.merger.norm.bias"].float(),
@@ -362,7 +351,7 @@ class CosmosVisionEncoder(nn.Module):
             hidden_size=1024, out_features=2048, use_postshuffle_norm=False,
         )
         
-        # Deepstack mergers (post-norm)
+        # Deepstack mergers (post-norm): 1024 -> 4096 -> 2048
         self.deepstack_mergers = nn.ModuleList([
             CosmosMerger(
                 cosmos_sd[f"model.visual.deepstack_merger_list.{i}.norm.weight"].float(),
@@ -374,15 +363,7 @@ class CosmosVisionEncoder(nn.Module):
                 hidden_size=1024, out_features=2048, use_postshuffle_norm=True,
             ) for i in range(len(deepstack_layers))
         ])
-        
-        # Output projection from checkpoint: weight [2048, 1024], bias [2048]
-        # This is: output = input @ W^T + b where input is [B, 1024], output is [B, 2048]
-        # In PyTorch Linear: weight is [out_features, in_features] = [2048, 1024]
-        out_w = clean["output_proj.weight"].float()   # [2048, 1024] (correct for PyTorch Linear)
-        out_b = clean["output_proj.bias"].float()    # [2048]
-        self.output_proj = nn.Linear(1024, 2048, bias=True)
-        self.output_proj.weight.data = out_w
-        self.output_proj.bias.data = out_b
+        # Note: no output_proj needed - merger already outputs 2048
     
     def forward(self, pixel_values):
         B, C, H, W = pixel_values.shape
@@ -418,8 +399,7 @@ class CosmosVisionEncoder(nn.Module):
             deepstack_features.append(merged.mean(dim=1))
         
         # Final output with mean pool
-        # The merger already outputs [B, 2048] - no output_proj needed
-        # (output_proj was for the original Cosmos architecture before the merger)
+        # Merger outputs [B, seq//4, 2048], then mean pool to [B, 2048]
         final_merged = self.final_merger(x)  # [B, seq//4, 2048]
         final_out = final_merged.mean(dim=1)  # [B, 2048]
         
@@ -550,7 +530,7 @@ def main():
     ckpt_sd = ckpt.get("student_state_dict", ckpt)
     print(f"  Checkpoint: {len(ckpt_sd)} keys")
     
-    student = CosmosVisionEncoder(cosmos_sd, ckpt_sd, deepstack_layers=[5, 11, 17])
+    student = CosmosVisionEncoder(cosmos_sd, deepstack_layers=[5, 11, 17])
     student = student.to(device).eval()
     print(f"  Student: 24 blocks, hidden=1024, output=2048, deepstack=[5,11,17]")
     del cosmos_sd
