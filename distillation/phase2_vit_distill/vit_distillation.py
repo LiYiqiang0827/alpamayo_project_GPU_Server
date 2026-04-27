@@ -35,6 +35,16 @@ from typing import Optional
 
 import torch
 import torch.nn as nn
+
+# Training utilities
+from training_utils import (
+    setup_training_output, setup_logger, log_training_header,
+    TrainingTracker, save_best_checkpoint
+)
+
+# Multi-chunk dataset
+from vit_multi_image_dataset import ViTMultiImageDataset, build_vit_dataloaders
+
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, DistributedSampler
@@ -60,10 +70,16 @@ except ImportError:
 @dataclass
 class DistillationConfig:
     # Paths
-    teacher_model_path: str = "~/cosmos_reason2_expanded/"
-    student_model_path: str = "~/cosmos_reason2_expanded/"
-    data_path: str = "/data01/mikelee/data/data_sample_chunk{0..24}/infer/"
-    output_dir: str = "./output_vit_distill"
+    teacher_model_path: str = "/data01/mikelee/weight/models--nvidia--Alpamayo-1.5-10B/"
+    student_model_path: str = "/home/user/cosmos_reason2_expanded/"
+    data_path: str = "/data01/mikelee/data/"
+    output_dir: str = "/gpfs-data/mikelee/distillation_output"
+    
+    # Multi-chunk settings
+    train_chunks: list = field(default_factory=lambda: list(range(27)))
+    val_chunks: list = field(default_factory=lambda: [27, 28, 29])
+    samples_per_epoch: int = 100000
+    val_samples: int = 2000
     
     # Architecture
     teacher_hidden: int = 1152
@@ -656,10 +672,20 @@ def main():
     if args.config and os.path.exists(args.config):
         with open(args.config) as f:
             config_dict = json.load(f)
-        config = DistillationConfig(**config_dict)
-    else:
-        config = DistillationConfig()
+        # Extract custom fields before passing to DistillationConfig
+    train_chunks = config_dict.pop('train_chunks', list(range(27)))
+    val_chunks = config_dict.pop('val_chunks', [27, 28, 29])
+    samples_per_epoch = config_dict.pop('samples_per_epoch', 100000)
+    val_samples = config_dict.pop('val_samples', 2000)
     
+    config = DistillationConfig(**config_dict)
+    
+    # Re-add custom fields to config
+    config.__dict__['train_chunks'] = train_chunks
+    config.__dict__['val_chunks'] = val_chunks
+    config.__dict__['samples_per_epoch'] = samples_per_epoch
+    config.__dict__['val_samples'] = val_samples
+    config = DistillationConfig()    
     # Override with args
     if args.deepspeed:
         config.use_deepspeed = True
@@ -762,33 +788,43 @@ def main():
     # Mixed precision scaler
     scaler = GradScaler() if (config.fp16 and not config.bf16) else None
     
-    # Dataset and dataloader
-    transform = get_default_transform(image_size=224)
-    train_dataset = ImageInferenceDataset(config.data_path, transform=transform)
+    # Setup timestamped output directory with full logging
+    output_root = setup_training_output(config.__dict__)
+    config.output_dir = str(output_root)
     
-    if world_size > 1 and not config.use_deepspeed:
-        sampler = DistributedSampler(train_dataset, num_replicas=world_size, rank=rank)
-        train_loader = DataLoader(
-            train_dataset,
-            batch_size=config.batch_size_per_gpu,
-            sampler=sampler,
-            num_workers=4,
-            pin_memory=True,
-        )
-    else:
-        train_loader = DataLoader(
-            train_dataset,
-            batch_size=config.batch_size_per_gpu,
-            shuffle=True,
-            num_workers=4,
-            pin_memory=True,
-        )
+    # Setup logger for file output
+    log_file = output_root / "training.log"
+    file_handler = logging.FileHandler(str(log_file))
+    file_handler.setFormatter(logging.Formatter('%(asctime)s | %(message)s', datefmt='%Y-%m-%d %H:%M:%S'))
+    logger.addHandler(file_handler)
     
-    # Create a small eval loader (just first 100 samples)
-    eval_dataset = torch.utils.data.Subset(train_dataset, range(min(100, len(train_dataset))))
-    eval_loader = DataLoader(eval_dataset, batch_size=config.batch_size_per_gpu, shuffle=False)
+    # Log training header with all metadata
+    log_training_header(logger, config.__dict__)
     
-    logger.info(f"Train dataset size: {len(train_dataset)}")
+    # Initialize training tracker for best model
+    tracker = TrainingTracker()
+    
+    # Build multi-chunk datasets (ViTMultiImageDataset with 16 images per frame)
+    train_dataset, val_dataset = build_vit_dataloaders(config.__dict__, seed=config.seed)
+    
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=config.batch_size_per_gpu,
+        shuffle=True,
+        num_workers=4,
+        pin_memory=True,
+    )
+    
+    # Validation loader
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=config.batch_size_per_gpu,
+        shuffle=False,
+        num_workers=2,
+    )
+    
+    logger.info(f"Train dataset: {len(train_dataset):,} frames (16 images each)")
+    logger.info(f"Val dataset: {len(val_dataset):,} frames (16 images each)")
     logger.info(f"Trainable parameters: {sum(p.numel() for p in trainable_params):,}")
     
     # Resume from checkpoint
@@ -856,7 +892,7 @@ def main():
             # Save checkpoint every 5000 steps
             if step % 5000 == 0:
                 save_checkpoint(student, optimizer, scaler, step, config, 
-                              epoch_dir, distill_module, rank)
+                              str(output_root), distill_module, rank, is_best=False)
                 
                 # Validate after each checkpoint
                 if rank == 0:
@@ -865,8 +901,20 @@ def main():
                     if isinstance(val_dataset, ViTMultiImageDataset):
                         val_dataset.resample(seed=config.seed + epoch + step)
                     
+                    # Resample validation set for this evaluation
+                    if isinstance(val_dataset, ViTMultiImageDataset):
+                        val_dataset.resample(seed=config.seed + epoch + step)
+                    
                     metrics = evaluate(teacher, student, distill_module, val_loader, 
                                     config, device, logger, rank)
+                    
+                    # Check if this is the best model
+                    is_best = tracker.update(step, loss_dict['total_loss'], metrics)
+                    if is_best:
+                        save_checkpoint(student, optimizer, scaler, step, config, 
+                                      str(output_root), distill_module, rank, is_best=True)
+                        logger.info(f"★★★ New best model at step {step}! Val loss: {tracker.best_val_loss:.6f} ★★★")
+                    
                     logger.info(
                         f"Val Results: final_mse={metrics['eval_final_mse']:.6f}, "
                         f"deepstack_mse={metrics['eval_deepstack_mse']:.6f}"
