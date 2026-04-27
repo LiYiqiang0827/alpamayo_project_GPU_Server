@@ -215,11 +215,17 @@ class VisionDistillationModule(nn.Module):
         # This should be implemented based on actual student ViT architecture
         # Placeholder: assume student_vit returns (final_out, deepstack_list)
         final_out, deepstack_raw = self.student_vit(pixel_values)
-        # deepstack_raw: list of [B, student_hidden_dim] (1024) - unprojected CLS tokens
-        # final_out: [B, student_dim] (2048) - already projected
-        # Project deepstack from student_hidden_dim to student_dim
-        deepstack_projected = [self.deepstack_student_proj(feat) for feat in deepstack_raw]
-        return final_out, deepstack_projected
+        # deepstack_raw: may be already projected (2048) or unprojected (1024)
+        # Check if projection is needed based on feature dimension
+        # CosmosVisionEncoder outputs 2048-dim deepstack (already merged)
+        # DummyStudentViT outputs 1024-dim deepstack (needs projection)
+        if deepstack_raw[0].shape[-1] == 2048:
+            # Already projected, skip
+            return final_out, deepstack_raw
+        else:
+            # Needs projection (1024 -> 2048)
+            deepstack_projected = [self.deepstack_student_proj(feat) for feat in deepstack_raw]
+            return final_out, deepstack_projected
     
     def get_teacher_features(self, pixel_values: torch.Tensor, teacher_model: nn.Module) -> tuple[torch.Tensor, list[torch.Tensor]]:
         """

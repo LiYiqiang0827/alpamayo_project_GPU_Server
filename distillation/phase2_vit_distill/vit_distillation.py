@@ -220,8 +220,7 @@ def load_student_model(model_path: str, device: torch.device, rank: int = 0,
     
     # Check if path exists, if not create dummy
     if not os.path.exists(model_path):
-        log(f"[Rank {rank}] Student model path not found: {model_path}, using dummy student")
-        student = DummyStudentViT()
+        raise FileNotFoundError(f"[Rank {rank}] Student model path not found: {model_path}")
     else:
         log(f"[Rank {rank}] Loading student model from: {model_path}")
         try:
@@ -236,8 +235,7 @@ def load_student_model(model_path: str, device: torch.device, rank: int = 0,
                 student.load_state_dict(state_dict, strict=False)
                 log(f"[Rank {rank}] Loaded student checkpoint")
         except Exception as e:
-            log(f"[Rank {rank}] Warning: {e}, using dummy student")
-            student = DummyStudentViT()
+            raise RuntimeError(f"[Rank {rank}] Student model loading failed: {e}")
     
     student = student.to(device)
     return student
@@ -291,10 +289,28 @@ class Qwen3VLWrapper(nn.Module):
 
 def _build_student_vit_model() -> nn.Module:
     """Build student ViT architecture (Cosmos-2B expanded ViT)."""
-    # For now, use DummyStudentViT to verify training pipeline
-    # Real Cosmos-2B ViT integration requires fixing grid_thw issues
-    print("[Student] Using DummyStudentViT for pipeline verification")
-    return DummyStudentViT()
+    import glob as glob_mod
+    from safetensors.torch import load_file
+    import torch
+    
+    cosmos_path = os.path.expanduser("~/cosmos_reason2_expanded/")
+    ckpt_path = "/gpfs-data/mikelee/distillation_output/checkpoints/checkpoint_step_9500.pt"
+    
+    print(f"[Student] Loading base Cosmos from {cosmos_path}")
+    cosmos_sd = load_file(os.path.join(cosmos_path, "model-expanded.safetensors"))
+    cosmos_sd = {k: v.float() for k, v in cosmos_sd.items()}
+    print(f"  Cosmos: {len(cosmos_sd)} keys")
+    
+    print(f"[Student] Loading trained checkpoint from {ckpt_path}")
+    ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+    ckpt_sd = ckpt.get("student_state_dict", ckpt)
+    ckpt_sd = {k.replace("module.", ""): v for k, v in ckpt_sd.items()}
+    print(f"  Checkpoint: {len(ckpt_sd)} keys")
+    
+    from eval_vit_real import CosmosVisionEncoder
+    student = CosmosVisionEncoder(cosmos_sd, ckpt_sd, deepstack_layers=[5, 11, 17])
+    print("[Student] CosmosVisionEncoder loaded successfully")
+    return student
 
 
 
