@@ -685,8 +685,6 @@ def main():
     config.__dict__['val_chunks'] = val_chunks
     config.__dict__['samples_per_epoch'] = samples_per_epoch
     config.__dict__['val_samples'] = val_samples
-    config = DistillationConfig()    
-    # Override with args
     if args.deepspeed:
         config.use_deepspeed = True
     if args.debug:
