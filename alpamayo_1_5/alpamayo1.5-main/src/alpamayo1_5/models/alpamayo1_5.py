@@ -455,6 +455,20 @@ class Alpamayo1_5(ReasoningVLA):
                     [input_ids.shape[0], num_traj_sets, num_traj_samples]
                 )
             # Add diffusion steps if requested
+            # Add vlm logits and token ids if available
+            if hasattr(vlm_outputs, "logits") and vlm_outputs.logits is not None:
+                # vlm_outputs.logits is a tuple of (batch, vocab_size) tensors
+                # Stack to (batch, num_new_tokens, vocab_size)
+                logits_tensor = torch.stack(vlm_outputs.logits, dim=1)
+                extra["vlm_logits"] = logits_tensor.cpu().float().numpy()
+                # Also save the generated token ids (excluding prompt)
+                # sequences shape: (batch, prompt_len + gen_len)
+                # logits length = gen_len
+                gen_len = logits_tensor.shape[1]
+                prompt_len = vlm_outputs.sequences.shape[1] - gen_len
+                token_ids = vlm_outputs.sequences[:, prompt_len:].cpu().numpy()
+                extra["vlm_token_ids"] = token_ids
+
             if return_diffusion_steps and all_steps_xyz is not None:
                 extra["diffusion_steps_xyz"] = all_steps_xyz.cpu().numpy()
                 extra["diffusion_steps_action"] = all_actions.cpu().numpy()

@@ -119,14 +119,19 @@ def parse_and_validate_args() -> dict:
     parser.add_argument(
         "--save_diffusion_steps",
         action="store_true",
-        default=True,
-        help="保存 Flow Matching 每一步的中间结果 (默认开启)"
+        help="保存 Flow Matching 每一步的中间结果 (action 和 trajectory)"
     )
     parser.add_argument(
-        "--pre_resized",
+        "--save_logits",
         action="store_true",
+        help="保存教师模型 VLM logits 和 hard_token_id 到 logits/ 目录"
+    )
+    parser.add_argument(
+        "--no-small-images",
+        dest="use_small_images",
+        action="store_false",
         default=True,
-        help="使用预缩放图片 (_small.jpg),跳过processor的resize步骤 (默认开启)"
+        help="禁用 _small.jpg 后缀，使用标准 .jpg (默认开启 _small.jpg)"
     )
 
     args = parser.parse_args()
@@ -205,7 +210,8 @@ def parse_and_validate_args() -> dict:
         "step": step,
         "traj": traj,
         "save_diffusion_steps": args.save_diffusion_steps,
-        "pre_resized": args.pre_resized,
+        "save_logits": args.save_logits,
+        "use_small_images": args.use_small_images,
     }
 
     return params
@@ -286,15 +292,13 @@ def build_task_dataframe(params: dict) -> pd.DataFrame:
                 for t in range(NUM_FRAMES_PER_CAMERA):
                     col_idx = f"{cam}_f{t}_idx"
                     frame_idx = int(row[col_idx])
+                    suffix = "_small.jpg" if params.get("use_small_images", True) else ".jpg"
                     img_path = os.path.join(
                         clip_data_dir,
                         "camera_images",
                         cam,
-                        f"{frame_idx:06d}.jpg"
+                        f"{frame_idx:06d}{suffix}"
                     )
-                    if params.get("pre_resized"):
-                        # 预缩放模式：使用 _small.npy 文件，跳过 resize
-                        img_path = img_path.replace(".jpg", "_small.jpg")
                     image_paths[(cam, t)] = img_path
 
             history_path = os.path.join(
@@ -438,7 +442,7 @@ def assign_tasks_to_workers(task_df: pd.DataFrame, worker_df: pd.DataFrame) -> l
 # ========================
 # 第四步:启动多GPU推理进程
 # ========================
-def create_output_dir(base_dir: str = "/data01/mikelee/infer_result") -> str:
+def create_output_dir(base_dir: str = "/gpfs-data/mikelee/infer_result") -> str:
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     output_dir = os.path.join(base_dir, f"infer_result_{timestamp}")
     os.makedirs(output_dir, exist_ok=True)
@@ -451,7 +455,8 @@ def run_worker_inference(task: Dict[str, Any], output_root: str, params: dict):
     frame_df = task["frame_df"]
     traj = params["traj"]
     save_diffusion_steps = params.get("save_diffusion_steps", False)
-    pre_resized = params.get("pre_resized", False)
+    save_logits = params.get("save_logits", False)
+    use_small_images = params.get("use_small_images", True)
     
     os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
     os.environ["TRANSFORMERS_OFFLINE"] = "1"
@@ -506,14 +511,8 @@ def run_worker_inference(task: Dict[str, Any], output_root: str, params: dict):
             for cam in CAMERA_ORDER:
                 for t in range(NUM_FRAMES_PER_CAMERA):
                     img_path = image_paths[(cam, t)]
-                    if params.get("pre_resized"):
-                        # 预缩放模式：直接加载 _small.jpg（预处理 --pre_resize 输出）
-                        img = Image.open(img_path).convert('RGB')
-                        img_np = np.array(img)
-                    else:
-                        img = Image.open(img_path).convert('RGB')
-                        img_np = np.array(img)
-                    images.append(img_np)
+                    img = Image.open(img_path).convert('RGB')
+                    images.append(np.array(img))
 
             images = np.stack(images, axis=0)
             images = rearrange(images, '(c t) h w ch -> c t ch h w', c=4, t=4)
@@ -591,6 +590,67 @@ def run_worker_inference(task: Dict[str, Any], output_root: str, params: dict):
             cot_path = os.path.join(cot_dir, f"chunk{chunk_id:04d}_{clip_id}_{frame_id:06d}_cot.txt")
             with open(cot_path, 'w') as f:
                 f.write(cot_text)
+
+            # Save vlm logits if requested
+            if save_logits and extra is not None:
+                vlm_logits = extra.get("vlm_logits")
+                if vlm_logits is not None:
+                    # vlm_logits shape: (batch, num_new_tokens, vocab_size)
+                    logits_np = vlm_logits[0]  # (num_new_tokens, vocab_size)
+                    seq_len = logits_np.shape[0]
+                    
+                    # Get generated token ids from cot sequences
+                    # The cot sequences from extract_text_tokens are already text tokens
+                    # We need to get the token ids from vlm_outputs.sequences
+                    # Since we don't have sequences here directly, we'll decode from logits argmax
+                    # Actually, we have extra["cot"] which contains the generated text tokens
+                    # But we need token ids. Let's use the input_ids from model_inputs for prompt
+                    # and generated tokens from the model output
+                    
+                    # Get the full generated token ids
+                    # model_inputs["tokenized_data"]["input_ids"] contains prompt tokens
+                    # The generated tokens are not directly available here
+                    # We'll use the hard_token_id from logits and token_text from decoding
+                    
+                    # Get actual generated token ids from model
+                    vlm_token_ids = extra.get("vlm_token_ids")
+                    if vlm_token_ids is not None:
+                        gen_token_ids = vlm_token_ids[0]  # (num_new_tokens,)
+                    else:
+                        gen_token_ids = None
+                    
+                    token_data = []
+                    for pos in range(seq_len):
+                        token_logits = logits_np[pos, :]  # (vocab_size,)
+                        hard_token_id = int(np.argmax(token_logits))
+                        
+                        # Use actual generated token id if available, otherwise fallback to hard_token_id
+                        if gen_token_ids is not None and pos < len(gen_token_ids):
+                            token_id = int(gen_token_ids[pos])
+                        else:
+                            token_id = hard_token_id
+                        
+                        token_text = processor.tokenizer.decode([token_id], skip_special_tokens=False)
+                        
+                        token_data.append({
+                            'token_idx': pos,
+                            'token_id': token_id,  # Actual generated token id
+                            'token_text': token_text,
+                            'hard_token_id': hard_token_id,  # Argmax of logits
+                            'logits': token_logits,
+                        })
+                    
+                    logits_df = pd.DataFrame(token_data)
+                    
+                    # Save to logits/ directory (same level as diffusion_steps)
+                    logits_dir = os.path.join(output_root, "logits")
+                    os.makedirs(logits_dir, exist_ok=True)
+                    
+                    parquet_path = os.path.join(
+                        logits_dir,
+                        f"chunk{chunk_id:04d}_{clip_id}_{frame_id:06d}_logits.parquet"
+                    )
+                    logits_df.to_parquet(parquet_path, index=False)
 
             # Save diffusion steps if requested
             if save_diffusion_steps and extra is not None:
