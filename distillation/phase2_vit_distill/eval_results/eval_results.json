@@ -1,9 +1,9 @@
 {
-  "final_mse": 0.008281596750020982,
-  "final_mse_std": 1.5107734648362353e-06,
-  "deepstack_mse": 0.0064328449869450795,
-  "deepstack_mse_std": 3.1674682878646233e-06,
-  "final_cos": 0.34549028873443605,
-  "deepstack_cos": 0.5775417343775431,
-  "num_samples": 100
+  "final_mse": 178.29833537101746,
+  "final_mse_std": 126.57629621683348,
+  "deepstack_mse": 0.048846983568121984,
+  "deepstack_mse_std": 0.0035012972831168715,
+  "final_cos": -0.011808323916047811,
+  "deepstack_cos": 0.020847113125491888,
+  "num_samples": 200
 }

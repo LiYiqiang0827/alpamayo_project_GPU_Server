@@ -59,7 +59,7 @@ def load_images_for_frame_strict(row, data_dir):
         for t in range(4):
             idx_col = f'{cam}_f{t}_idx'
             frame_idx = int(row[idx_col])
-            img_path = f'{data_dir}/camera_images/{cam}/{frame_idx:06d}.jpg'
+            img_path = f'{data_dir}/camera_images/{cam}/{frame_idx:06d}_small.jpg'
             img = Image.open(img_path).convert('RGB')
             img_array = np.array(img)
             images.append(img_array)

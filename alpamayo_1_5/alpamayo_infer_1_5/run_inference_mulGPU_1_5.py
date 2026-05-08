@@ -565,7 +565,20 @@ def run_worker_inference(task: Dict[str, Any], output_root: str, params: dict):
                 )
 
             pred_xyz_np = pred_xyz.cpu().numpy()[0, 0, 0, :, :2]
+            # Check if already processed (resume from checkpoint)
             pred_path = os.path.join(pred_traj_dir, f"chunk{chunk_id:04d}_{clip_id}_{frame_id:06d}_predtraj.npy")
+            cot_path = os.path.join(cot_dir, f"chunk{chunk_id:04d}_{clip_id}_{frame_id:06d}_cot.txt")
+            if os.path.exists(pred_path) and os.path.exists(cot_path):
+                # Already processed, skip to save time
+                all_cot_results.append({
+                    'chunk_id': chunk_id,
+                    'worker_id': worker_id,
+                    'clip_name': clip_id,
+                    'frame_number': frame_id,
+                    'cot_result': ""
+                })
+                continue
+            
             np.save(pred_path, pred_xyz_np)
 
             coc_texts = extra.get("cot", [[[]]])
