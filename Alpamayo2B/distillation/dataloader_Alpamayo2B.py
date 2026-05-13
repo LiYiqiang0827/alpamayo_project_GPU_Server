@@ -604,15 +604,23 @@ def collate_fn(batch: List[Dict[str, Any]]) -> Dict[str, Any]:
             torch.full((pad_len,), -100, dtype=torch.long)
         ]))
         
-        # Teacher logits padding
-        if pad_len > 0:
-            pad_logits = torch.full((pad_len, vocab_size), 0.0, dtype=torch.float32)
+        # Teacher logits padding - ensure same seq_len as input_ids
+        teacher_seq_len = item['teacher_logits'].shape[0]
+        teacher_pad_len = max_len - teacher_seq_len
+        
+        if teacher_pad_len > 0:
+            pad_logits = torch.full((teacher_pad_len, vocab_size), 0.0, dtype=torch.float32)
             teacher_logits_list.append(torch.cat([item['teacher_logits'], pad_logits]))
             teacher_soft_list.append(torch.cat([item['teacher_soft'], pad_logits]))
             teacher_hard_list.append(torch.cat([
                 item['teacher_hard'],
-                torch.full((pad_len,), -100, dtype=torch.long)
+                torch.full((teacher_pad_len,), -100, dtype=torch.long)
             ]))
+        elif teacher_pad_len < 0:
+            # Truncate if teacher logits are longer
+            teacher_logits_list.append(item['teacher_logits'][:max_len])
+            teacher_soft_list.append(item['teacher_soft'][:max_len])
+            teacher_hard_list.append(item['teacher_hard'][:max_len])
         else:
             teacher_logits_list.append(item['teacher_logits'])
             teacher_soft_list.append(item['teacher_soft'])
@@ -712,6 +720,8 @@ def create_distillation_dataloader(
         num_workers=num_workers,
         collate_fn=collate_fn,
         pin_memory=True,
+        prefetch_factor=4,
+        # persistent_workers disabled to avoid multiprocessing connection issues
         **kwargs
     )
 

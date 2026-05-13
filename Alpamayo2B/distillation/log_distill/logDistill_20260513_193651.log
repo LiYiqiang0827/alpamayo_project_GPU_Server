@@ -1,0 +1,30 @@
+2026-05-13 19:36:51,088 - INFO - ======================================================================
+2026-05-13 19:36:51,088 - INFO - Alpamayo2B Distillation Training Started
+2026-05-13 19:36:51,088 - INFO - Log file: /home/user/mikelee/alpamayo_project/Alpamayo2B/distillation/log_distill/logDistill_20260513_193651.log
+2026-05-13 19:36:51,088 - INFO - ======================================================================
+2026-05-13 19:36:51,221 - INFO - ======================================================================
+2026-05-13 19:36:51,222 - INFO - Alpamayo2B Distillation Training Started
+2026-05-13 19:36:51,222 - INFO - Log file: /home/user/mikelee/alpamayo_project/Alpamayo2B/distillation/log_distill/logDistill_20260513_193651.log
+2026-05-13 19:36:51,222 - INFO - ======================================================================
+2026-05-13 19:36:51,252 - INFO - ======================================================================
+2026-05-13 19:36:51,252 - INFO - Alpamayo2B Distillation Training Started
+2026-05-13 19:36:51,252 - INFO - Log file: /home/user/mikelee/alpamayo_project/Alpamayo2B/distillation/log_distill/logDistill_20260513_193651.log
+2026-05-13 19:36:51,252 - INFO - ======================================================================
+2026-05-13 19:36:51,283 - INFO - ======================================================================
+2026-05-13 19:36:51,283 - INFO - Alpamayo2B Distillation Training Started
+2026-05-13 19:36:51,283 - INFO - Log file: /home/user/mikelee/alpamayo_project/Alpamayo2B/distillation/log_distill/logDistill_20260513_193651.log
+2026-05-13 19:36:51,283 - INFO - ======================================================================
+2026-05-13 19:36:51,289 - INFO - ======================================================================
+2026-05-13 19:36:51,289 - INFO - Alpamayo2B Distillation Training Started
+2026-05-13 19:36:51,289 - INFO - Log file: /home/user/mikelee/alpamayo_project/Alpamayo2B/distillation/log_distill/logDistill_20260513_193651.log
+2026-05-13 19:36:51,289 - INFO - ======================================================================
+2026-05-13 19:42:15,222 - INFO - Step 100 | Epoch 1 | Loss: 6.706611 | KL: 29.216349 | CE: 21.250000 | LR: 6.98e-08
+2026-05-13 19:42:15,222 - INFO - Step 100 | Epoch 1 | Loss: 4.573181 | KL: 17.516392 | CE: 20.125000 | LR: 6.98e-08
+2026-05-13 19:42:15,222 - INFO - Step 100 | Epoch 1 | Loss: 7.136624 | KL: 31.941422 | CE: 20.625000 | LR: 6.98e-08
+2026-05-13 19:42:15,223 - INFO - Step 100 | Epoch 1 | Loss: 7.066051 | KL: 31.493509 | CE: 20.750000 | LR: 6.98e-08
+2026-05-13 19:42:15,223 - INFO - Step 100 | Epoch 1 | Loss: 6.012141 | KL: 25.560452 | CE: 20.500000 | LR: 6.98e-08
+2026-05-13 19:45:24,913 - INFO - Step 200 | Epoch 1 | Loss: 6.409937 | KL: 27.788927 | CE: 20.625000 | LR: 1.40e-07
+2026-05-13 19:45:24,913 - INFO - Step 200 | Epoch 1 | Loss: 7.048548 | KL: 31.482773 | CE: 20.500000 | LR: 1.40e-07
+2026-05-13 19:45:24,913 - INFO - Step 200 | Epoch 1 | Loss: 4.912247 | KL: 19.275337 | CE: 20.500000 | LR: 1.40e-07
+2026-05-13 19:45:24,913 - INFO - Step 200 | Epoch 1 | Loss: 7.115773 | KL: 32.045486 | CE: 20.125000 | LR: 1.40e-07
+2026-05-13 19:45:24,913 - INFO - Step 200 | Epoch 1 | Loss: 7.008589 | KL: 31.209793 | CE: 20.625000 | LR: 1.40e-07

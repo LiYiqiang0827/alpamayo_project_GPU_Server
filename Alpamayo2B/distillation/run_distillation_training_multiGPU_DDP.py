@@ -43,10 +43,8 @@ def parse_gpu_list(gpu_string):
 
 def setup_distributed(rank, world_size, gpu_list):
     """初始化分布式环境"""
-    os.environ['MASTER_ADDR'] = 'localhost'
-    os.environ['MASTER_PORT'] = '29500'
-    
-    # 设置当前进程使用的GPU
+    # torchrun already sets MASTER_ADDR and MASTER_PORT
+    # Just need to set the GPU device
     torch.cuda.set_device(gpu_list[rank])
     
     # 初始化进程组
@@ -57,7 +55,7 @@ def setup_distributed(rank, world_size, gpu_list):
         rank=rank
     )
     
-    print(f"[Rank {rank}] Initialized on GPU {gpu_list[rank]}")
+    print(f"[Rank {rank}] Initialized on GPU {gpu_list[rank]}", flush=True)
 
 def cleanup_distributed():
     """清理分布式环境"""
@@ -109,6 +107,9 @@ def main():
     # 设置当前GPU
     current_gpu = gpu_list[local_rank]
     torch.cuda.set_device(current_gpu)
+    
+    # 初始化分布式环境
+    setup_distributed(rank, world_size, gpu_list)
     
     # 只在主进程打印信息
     if rank == 0:

@@ -1171,3 +1171,148 @@ python3 run_distillation_training_multiGPU.py --gpu-list 0,1,2,3,4,5,6,7
 2. **进程数匹配**: `torchrun --nproc_per_node` 必须与 `--gpu-list` 长度一致
 3. **端口占用**: 默认使用 29500 端口，如被占用可更换
 4. **日志记录**: 只在主进程(rank=0)记录日志，避免重复
+
+---
+
+## Phase 10: 训练可视化监控
+
+### 10.1 可视化脚本说明
+
+**脚本位置**: `plot_training_curves.py`
+
+**功能**:
+- 实时解析训练日志，自动提取 loss/kl/ce/lr 指标
+- 生成四合一训练曲线图（Total Loss / KL Loss / CE Loss / Learning Rate）
+- 支持平滑曲线（50步滑动平均）消除噪声
+- 自动生成 HTML 监控面板，支持浏览器刷新
+- 支持连续监控模式（定时更新）
+
+### 10.2 使用方法
+
+#### 方式一：单次生成（立即查看当前状态）
+```bash
+cd /home/user/mikelee/alpamayo_project/Alpamayo2B/distillation
+python3 plot_training_curves.py --log-file ddp_training_6gpu_bs1_v5.log --once --output-dir ./plots
+```
+
+#### 方式二：连续监控（后台定时更新）
+```bash
+cd /home/user/mikelee/alpamayo_project/Alpamayo2B/distillation
+python3 plot_training_curves.py --log-file ddp_training_6gpu_bs1_v5.log --output-dir ./plots --interval 300
+```
+
+#### 方式三：后台运行（nohup）
+```bash
+cd /home/user/mikelee/alpamayo_project/Alpamayo2B/distillation
+nohup python3 plot_training_curves.py --log-file ddp_training_6gpu_bs1_v5.log --output-dir ./plots --interval 300 > visualization.log 2>&1 &
+echo $! > visualize.pid
+```
+
+### 10.3 输出文件
+
+运行后会在 `./plots/` 目录生成：
+
+| 文件 | 说明 |
+|------|------|
+| `training_curves_latest.png` | 最新曲线图（固定文件名，覆盖更新） |
+| `training_curves_stepXXXX_YYYYMMDD_HHMMSS.png` | 历史曲线图（带时间戳，不覆盖） |
+| `training_monitor.html` | HTML 监控面板（浏览器打开即可查看） |
+
+### 10.4 查看曲线图
+
+#### 方法1：直接查看图片
+```bash
+# 在服务器上查看
+ls -la /home/user/mikelee/alpamayo_project/Alpamayo2B/distillation/plots/
+
+# 复制到本地查看
+scp gpu-server:/home/user/mikelee/alpamayo_project/Alpamayo2B/distillation/plots/training_curves_latest.png ./
+```
+
+#### 方法2：浏览器查看 HTML 面板
+```bash
+# 启动简单 HTTP 服务器
+python3 -m http.server 8080 --directory /home/user/mikelee/alpamayo_project/Alpamayo2B/distillation/plots/
+
+# 然后在本地浏览器访问
+# http://gpu-server-ip:8080/training_monitor.html
+```
+
+### 10.5 曲线解读指南
+
+#### 正常训练的特征
+- **Total Loss**: 持续下降，从 ~3.2 降到 ~0.8
+- **KL Loss**: 持续下降，从 ~9.2 降到 ~0.5（学生接近教师）
+- **CE Loss**: 持续下降，从 ~20.6 降到 ~10.2
+- **Learning Rate**: 按预设 schedule 变化
+
+#### 异常信号
+- **Loss 震荡剧烈**: 可能是学习率过大或 batch size 太小
+- **Loss 不下降**: 学习率太小、数据问题或模型卡住
+- **Loss 突然上升**: 梯度爆炸，需检查梯度裁剪
+- **KL 上升 CE 下降**: 学生偏离教师，可能过拟合
+
+#### 平台期现象
+在训练初期（0-2300步）可能出现平台期：
+- **原因**: 学习率 warmup 阶段，学习率太低
+- **处理**: 正常现象，等待学习率上升后会快速下降
+- **建议**: 若平台期过长（>5000步），考虑提高初始学习率
+
+### 10.6 实际案例分析
+
+#### 2026-05-14 训练状态（Step 6295）
+```
+损失变化:
+   Total Loss: 3.2236 → 0.8865 (下降 72.5%)
+   KL Loss:    9.2236 → 0.5236 (下降 94.3%)
+   CE Loss:    20.625 → 10.25  (下降 50.3%)
+
+训练评估:
+   损失持续下降，趋势良好
+   训练稳定，无震荡或异常
+   已过平台期，进入快速收敛阶段
+   学习率仍在 warmup 阶段，预计还有下降空间
+```
+
+### 10.7 脚本架构
+
+```
+plot_training_curves.py
+    ├── TrainingLogParser (日志解析器)
+    │   ├── parse_new_lines()     - 增量解析日志
+    │   └── get_summary()         - 获取统计摘要
+    │
+    └── TrainingVisualizer (可视化器)
+        ├── plot_loss_curve()     - 绘制四合一曲线图
+        ├── generate_html_report() - 生成 HTML 面板
+        └── _smooth_curve()       - 曲线平滑处理
+```
+
+### 10.8 依赖要求
+
+```bash
+# 系统依赖
+pip install matplotlib numpy
+
+# 服务器已预装版本
+matplotlib: 3.10.8
+numpy: 2.2.6
+```
+
+### 10.9 进阶用法
+
+#### 自定义平滑窗口
+修改脚本中 window=50 参数：
+```python
+# 更平滑（适合长训练）
+smoothed = self._smooth_curve(loss, window=100)
+
+# 更敏感（适合短训练或调试）
+smoothed = self._smooth_curve(loss, window=20)
+```
+
+#### 添加自定义指标
+在 TrainingLogParser.TRAIN_PATTERN 中添加正则表达式捕获新指标。
+
+#### 集成到训练脚本
+可在 train_distillation_Alpamayo2B.py 的 _log_metrics() 中直接调用可视化。
