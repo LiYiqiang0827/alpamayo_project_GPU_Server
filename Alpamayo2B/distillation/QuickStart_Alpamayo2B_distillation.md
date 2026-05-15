@@ -405,7 +405,7 @@ test_clips = all_clips[int(num_clips * 0.9):]
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
 | batch_size | 1 | 每GPU批次大小 |
-| gradient_accumulation_steps | 4 | 梯度累积步数 |
+| gradient_accumulation_steps | 16 | 梯度累积步数 |
 | num_epochs | 3 | 训练轮数 |
 | learning_rate | 5e-5 | 学习率 |
 | weight_decay | 0.01 | 权重衰减 |
@@ -413,7 +413,7 @@ test_clips = all_clips[int(num_clips * 0.9):]
 | temperature | 2.0 | 蒸馏温度 |
 | alpha | 0.7 | KL loss权重 |
 | beta | 0.3 | CE loss权重 |
-| save_steps | 500 | 保存检查点步数 |
+| save_steps | 5000 | 保存检查点步数 |
 | logging_steps | 10 | 日志记录步数 |
 
 **损失函数设计**:
@@ -1316,3 +1316,35 @@ smoothed = self._smooth_curve(loss, window=20)
 
 #### 集成到训练脚本
 可在 train_distillation_Alpamayo2B.py 的 _log_metrics() 中直接调用可视化。
+
+
+---
+
+## 附录: global_step 计算逻辑 (v12+)
+
+### 优化说明
+
+从 v12 版本开始，global_step 的计算逻辑已优化：
+
+**修改前**:
+
+- save_steps=5000 实际表示 5000 * gradient_accumulation_steps 个 data steps
+
+**修改后**:
+
+- save_steps=5000 直接表示 5000 个 data steps
+- 更符合直觉，配置更简单
+
+### 配置示例
+
+| 参数 | 值 | 说明 |
+|------|-----|------|
+| gradient_accumulation_steps | 16 | 每16步累积梯度 |
+| save_steps | 5000 | 每5000 data steps保存 |
+| 实际保存间隔 | ~3.1小时 | 5000 * 2.2s |
+
+### 优势
+
+1. **直觉一致**: save_steps=5000 就是真正的 5000 步
+2. **配置简单**: 无需手动计算倍数
+3. **兼容性好**: gradient_accumulation_steps=1 时行为不变

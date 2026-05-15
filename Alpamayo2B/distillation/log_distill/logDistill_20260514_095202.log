@@ -1,0 +1,24 @@
+2026-05-14 09:52:02,119 - INFO - ======================================================================
+2026-05-14 09:52:02,119 - INFO - Alpamayo2B Distillation Training Started
+2026-05-14 09:52:02,119 - INFO - Log file: /home/user/mikelee/alpamayo_project/Alpamayo2B/distillation/log_distill/logDistill_20260514_095202.log
+2026-05-14 09:52:02,119 - INFO - ======================================================================
+2026-05-14 09:52:02,123 - INFO - ======================================================================
+2026-05-14 09:52:02,123 - INFO - Alpamayo2B Distillation Training Started
+2026-05-14 09:52:02,123 - INFO - Log file: /home/user/mikelee/alpamayo_project/Alpamayo2B/distillation/log_distill/logDistill_20260514_095202.log
+2026-05-14 09:52:02,123 - INFO - ======================================================================
+2026-05-14 09:52:02,193 - INFO - ======================================================================
+2026-05-14 09:52:02,193 - INFO - Alpamayo2B Distillation Training Started
+2026-05-14 09:52:02,193 - INFO - Log file: /home/user/mikelee/alpamayo_project/Alpamayo2B/distillation/log_distill/logDistill_20260514_095202.log
+2026-05-14 09:52:02,193 - INFO - ======================================================================
+2026-05-14 09:52:02,230 - INFO - ======================================================================
+2026-05-14 09:52:02,230 - INFO - Alpamayo2B Distillation Training Started
+2026-05-14 09:52:02,230 - INFO - Log file: /home/user/mikelee/alpamayo_project/Alpamayo2B/distillation/log_distill/logDistill_20260514_095202.log
+2026-05-14 09:52:02,230 - INFO - ======================================================================
+2026-05-14 10:10:26,598 - INFO - Step 100 | Epoch 1 | Loss: 3.079344 | KL: 8.935537 | CE: 20.250000 | LR: 6.98e-08
+2026-05-14 10:10:26,599 - INFO - Step 100 | Epoch 1 | Loss: 3.173072 | KL: 9.247910 | CE: 20.750000 | LR: 6.98e-08
+2026-05-14 10:10:26,598 - INFO - Step 100 | Epoch 1 | Loss: 3.112774 | KL: 9.037278 | CE: 20.375000 | LR: 6.98e-08
+2026-05-14 10:10:26,598 - INFO - Step 100 | Epoch 1 | Loss: 3.133808 | KL: 9.068186 | CE: 20.625000 | LR: 6.98e-08
+2026-05-14 10:25:52,928 - INFO - Step 200 | Epoch 1 | Loss: 3.140909 | KL: 9.108766 | CE: 20.625000 | LR: 1.40e-07
+2026-05-14 10:25:52,928 - INFO - Step 200 | Epoch 1 | Loss: 3.196898 | KL: 9.339416 | CE: 20.875000 | LR: 1.40e-07
+2026-05-14 10:25:52,928 - INFO - Step 200 | Epoch 1 | Loss: 3.159825 | KL: 9.172214 | CE: 20.750000 | LR: 1.40e-07
+2026-05-14 10:25:52,928 - INFO - Step 200 | Epoch 1 | Loss: 3.094973 | KL: 9.024845 | CE: 20.250000 | LR: 1.40e-07

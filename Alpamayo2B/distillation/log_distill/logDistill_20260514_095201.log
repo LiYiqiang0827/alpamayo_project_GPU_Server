@@ -1,0 +1,12 @@
+2026-05-14 09:52:01,508 - INFO - ======================================================================
+2026-05-14 09:52:01,508 - INFO - Alpamayo2B Distillation Training Started
+2026-05-14 09:52:01,508 - INFO - Log file: /home/user/mikelee/alpamayo_project/Alpamayo2B/distillation/log_distill/logDistill_20260514_095201.log
+2026-05-14 09:52:01,508 - INFO - ======================================================================
+2026-05-14 09:52:01,723 - INFO - ======================================================================
+2026-05-14 09:52:01,723 - INFO - Alpamayo2B Distillation Training Started
+2026-05-14 09:52:01,723 - INFO - Log file: /home/user/mikelee/alpamayo_project/Alpamayo2B/distillation/log_distill/logDistill_20260514_095201.log
+2026-05-14 09:52:01,723 - INFO - ======================================================================
+2026-05-14 10:10:26,598 - INFO - Step 100 | Epoch 1 | Loss: 3.055499 | KL: 8.843923 | CE: 20.125000 | LR: 6.98e-08
+2026-05-14 10:10:26,601 - INFO - Step 100 | Epoch 1 | Loss: 3.081970 | KL: 8.950542 | CE: 20.250000 | LR: 6.98e-08
+2026-05-14 10:25:52,928 - INFO - Step 200 | Epoch 1 | Loss: 3.143598 | KL: 9.079491 | CE: 20.750000 | LR: 1.40e-07
+2026-05-14 10:25:52,928 - INFO - Step 200 | Epoch 1 | Loss: 3.210974 | KL: 9.419852 | CE: 20.875000 | LR: 1.40e-07

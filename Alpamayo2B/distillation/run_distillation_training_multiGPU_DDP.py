@@ -87,6 +87,12 @@ def main():
         default=5e-5,
         help='学习率（默认: 5e-5）'
     )
+    parser.add_argument(
+        '--grad-accum',
+        type=int,
+        default=4,
+        help='梯度累积步数（默认: 4）'
+    )
     
     args = parser.parse_args()
     
@@ -139,7 +145,7 @@ def main():
         
         # 训练参数
         "batch_size": args.batch_size,
-        "gradient_accumulation_steps": 4,
+        "gradient_accumulation_steps": args.grad_accum,
         "num_epochs": args.epochs,
         "learning_rate": args.lr,
         "weight_decay": 0.01,
@@ -154,7 +160,7 @@ def main():
         # 日志和保存
         "save_steps": 5000,
         "eval_steps": 10000,
-        "logging_steps": 100,
+        "logging_steps": 10,
         
         # 其他
         "seed": 42,

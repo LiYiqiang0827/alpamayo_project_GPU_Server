@@ -75,9 +75,9 @@ DEFAULT_CONFIG = {
     # 训练配置
     "output_dir": "/data02/mikelee/Alpamayo2B_distill_output",
     "batch_size": 1,
-    "gradient_accumulation_steps": 4,
+    "gradient_accumulation_steps": 16,
     "num_epochs": 3,
-    "learning_rate": 5e-5,
+    "learning_rate": 1e-4,
     "weight_decay": 0.01,
     "warmup_ratio": 0.1,
     "max_grad_norm": 1.0,
@@ -88,9 +88,10 @@ DEFAULT_CONFIG = {
     "beta": 0.3,   # CE loss权重
     
     # 保存配置
-    "save_steps": 500,
+    "save_steps": 5000,
     "eval_steps": 250,
     "logging_steps": 10,
+    "save_total_limit": 3,
     
     # 其他
     "seed": 42,
@@ -490,7 +491,9 @@ class DistillationTrainer:
                     self.scheduler.step()
                     self.optimizer.zero_grad()
                     
-                    self.global_step += 1
+                    self.global_step += self.config["gradient_accumulation_steps"]
+                    if self.global_step <= 20:
+                        print(f"[DEBUG] global_step incremented to {self.global_step}, save_steps={self.config["save_steps"]}", flush=True)
                     
                     # 记录日志
                     if self.global_step % self.config["logging_steps"] == 0:
@@ -574,6 +577,7 @@ class DistillationTrainer:
         )
     
     def _save_checkpoint(self, suffix: str = ""):
+        print(f"[DEBUG] _save_checkpoint called with suffix={suffix}, global_step={self.global_step}, rank={self.config.get("rank", 0)}", flush=True)
         """保存检查点"""
         # 只在主进程保存
         rank = self.config.get("rank", 0)
@@ -586,8 +590,11 @@ class DistillationTrainer:
         
         checkpoint_dir.mkdir(parents=True, exist_ok=True)
         
-        # 保存模型
-        self.student_model.save_pretrained(checkpoint_dir)
+        # 保存模型（兼容 DDP 模式）
+        if hasattr(self.student_model, 'module'):
+            self.student_model.module.save_pretrained(checkpoint_dir)
+        else:
+            self.student_model.save_pretrained(checkpoint_dir)
         self.tokenizer.save_pretrained(checkpoint_dir)
         
         # 保存训练状态
@@ -600,6 +607,20 @@ class DistillationTrainer:
         torch.save(checkpoint_state, checkpoint_dir / "training_state.pt")
         
         print(f"\n✓ Checkpoint saved to {checkpoint_dir}")
+        # 清理旧 checkpoint，只保留最近的 save_total_limit 个
+        save_total_limit = self.config.get("save_total_limit", 3)
+        if save_total_limit > 0 and not suffix:
+            checkpoint_dirs = sorted([
+                d for d in self.output_dir.glob("checkpoint-*")
+                if d.is_dir() and d.name.replace("checkpoint-", "").isdigit()
+            ], key=lambda x: int(x.name.replace("checkpoint-", "")))
+            
+            if len(checkpoint_dirs) > save_total_limit:
+                for old_dir in checkpoint_dirs[:-save_total_limit]:
+                    import shutil
+                    shutil.rmtree(old_dir)
+                    print(f"  Removed old checkpoint: {old_dir.name}")
+
     
     @torch.no_grad()
     def _evaluate(self):
@@ -667,7 +688,10 @@ class DistillationTrainer:
         final_dir = self.output_dir / "final_model"
         final_dir.mkdir(parents=True, exist_ok=True)
         
-        self.student_model.save_pretrained(final_dir)
+        if hasattr(self.student_model, "module"):
+            self.student_model.module.save_pretrained(final_dir)
+        else:
+            self.student_model.save_pretrained(final_dir)
         self.tokenizer.save_pretrained(final_dir)
         
         print(f"\n✓ Final model saved to {final_dir}")

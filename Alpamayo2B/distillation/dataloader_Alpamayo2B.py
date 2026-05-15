@@ -720,7 +720,7 @@ def create_distillation_dataloader(
         num_workers=num_workers,
         collate_fn=collate_fn,
         pin_memory=True,
-        prefetch_factor=4,
+        prefetch_factor=2,
         # persistent_workers disabled to avoid multiprocessing connection issues
         **kwargs
     )
